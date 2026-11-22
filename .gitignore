@@ -1,0 +1,22 @@
+# secrets & local state — NEVER commit these
+*.json.bak
+command-center-*.json
+service_account.json
+instagram_cookies.json
+.env
+.env.local
+chrome_profile/
+venv/
+__pycache__/
+logs/
+node_modules/
+.next/
+scraper/.env
+supabase/.temp/
+supabase/.branches/
+logs/
+debug_scrape.py.bak
+*.tsbuildinfo
+web/out/
+out/
+.vercel/

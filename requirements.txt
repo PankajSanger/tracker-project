@@ -1,0 +1,26 @@
+# Instagram Post Tracker — Python dependencies
+# Install with:  pip install -r requirements.txt
+
+# ── Web automation ────────────────────────────────────────────────────────────
+selenium>=4.20.0
+webdriver-manager>=4.0.1        # auto-downloads matching ChromeDriver
+undetected-chromedriver>=3.5.5  # bypasses Instagram bot detection
+setuptools>=70.0.0              # restores distutils for Python 3.12+ compatibility
+
+# ── HTML parsing ──────────────────────────────────────────────────────────────
+beautifulsoup4>=4.12.3
+lxml>=5.2.1                     # fast BS4 parser
+
+# ── Data / Sheets ─────────────────────────────────────────────────────────────
+pandas>=2.2.0
+pygsheets>=2.0.6
+google-auth>=2.29.0
+google-auth-oauthlib>=1.2.0
+google-auth-httplib2>=0.2.0
+
+# ── Scheduling ────────────────────────────────────────────────────────────────
+schedule>=1.2.2
+
+# ── HTTP / utilities ─────────────────────────────────────────────────────────
+requests>=2.31.0
+urllib3>=2.2.0
