@@ -52,7 +52,7 @@ def with_retries(fn, *args):
     for attempt in range(MAX_RETRIES + 1):
         try:
             return fn(*args)
-        except instagram.AuthError:
+        except (instagram.AuthError, instagram.RateLimited):
             raise
         except Exception as exc:  # noqa: BLE001
             if attempt == MAX_RETRIES:
@@ -90,6 +90,7 @@ def main() -> int:
 
     failures = 0
     ig_auth_failed = False
+    ig_blocked = False
     new_snaps, new_alerts, new_acc_snaps = [], [], []
     post_changes: dict = {}
     acc_changes: dict = {}
@@ -97,8 +98,11 @@ def main() -> int:
 
     for post in posts:
         pid = post["id"]
-        if post["platform"] == "instagram" and ig_auth_failed:
-            post_changes[pid] = {"last_error": "Instagram session invalid"}
+        if post["platform"] == "instagram" and (ig_auth_failed or ig_blocked):
+            if ig_blocked:
+                post_changes[pid] = {"last_error": "Instagram is limiting this account - will retry next run"}
+            else:
+                post_changes[pid] = {"last_error": "Instagram session invalid"}
             continue
         mod = MODULES.get(post["platform"])
         if not mod:
@@ -118,6 +122,12 @@ def main() -> int:
             post_changes[pid] = ch
             new_alerts += spike_alerts(post, prev_summary.get(pid, {}), data)
             log.info("OK   %s %s %s", post["platform"], post["external_id"], {k: row[k] for k in METRICS})
+        except instagram.RateLimited as exc:
+            failures += 1
+            ig_blocked = True
+            log.error("%s", exc)
+            post_changes[pid] = {"last_error": str(exc)[:300]}
+            alerts.notify(f"Tracker: {exc}")
         except instagram.AuthError as exc:
             failures += 1
             ig_auth_failed = True
@@ -128,11 +138,11 @@ def main() -> int:
             failures += 1
             log.error("FAIL %s %s: %s", post["platform"], post["external_id"], exc)
             post_changes[pid] = {"last_error": str(exc)[:300]}
-        time.sleep(random.uniform(1, 3) if post["platform"] == "instagram" else 0.3)
+        time.sleep(random.uniform(4, 9) if post["platform"] == "instagram" else 0.3)
 
     ig_retry: list = []
     for acc in accounts:
-        if acc["platform"] == "instagram" and ig_auth_failed:
+        if acc["platform"] == "instagram" and (ig_auth_failed or ig_blocked):
             continue
         try:
             data = with_retries(MODULES[acc["platform"]].fetch_profile, acc["handle"])

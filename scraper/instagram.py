@@ -27,6 +27,10 @@ class AuthError(Exception):
     pass
 
 
+class RateLimited(Exception):
+    """Instagram says "try again later" (feedback_required). Stop sending requests for this run."""
+
+
 def parse_url(url: str) -> Optional[str]:
     m = _URL_RE.search(url)
     return m.group(1) if m else None
@@ -55,6 +59,8 @@ def _get(url: str) -> requests.Response:
     r = requests.get(url, headers=HEADERS, cookies=_cookies(), timeout=20)
     if r.status_code in (401, 403) or "login_required" in r.text[:300]:
         raise AuthError(f"Instagram rejected the session (HTTP {r.status_code}) - refresh IG_SESSIONID")
+    if r.status_code == 400 and "feedback_required" in r.text:
+        raise RateLimited("Instagram is temporarily limiting this account (feedback_required) - will retry next run")
     if r.status_code == 429:
         raise RuntimeError("Instagram rate limit (429)")
     if r.status_code == 400 and "/media/" in url:
