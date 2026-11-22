@@ -21,11 +21,9 @@ jobs:
       - run: python scrape.py
         working-directory: scraper
         env:
+          PLATFORMS: youtube,twitter   # Instagram runs from the team PC (see SETUP-WEB.md)
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          IG_SESSIONID: ${{ secrets.IG_SESSIONID }}
-          IG_CSRFTOKEN: ${{ secrets.IG_CSRFTOKEN }}
-          IG_DS_USER_ID: ${{ secrets.IG_DS_USER_ID }}
           YT_API_KEY: ${{ secrets.YT_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}

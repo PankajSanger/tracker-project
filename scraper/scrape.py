@@ -80,10 +80,13 @@ def spike_alerts(post: dict, prev: dict, cur: dict) -> list:
 def main() -> int:
     store = SheetsStore()
     store.ensure_tabs()
-    posts = [p for p in store.read("st_posts") if p.get("id") and truthy(p.get("active"))]
-    accounts = [a for a in store.read("st_accounts") if a.get("id") and truthy(a.get("active"))]
+    # PLATFORMS lets two machines split the work (e.g. GitHub: youtube,twitter; your PC: instagram).
+    allowed = {x.strip() for x in os.getenv("PLATFORMS", "instagram,twitter,youtube").split(",") if x.strip()}
+    all_posts = [p for p in store.read("st_posts") if p.get("id") and truthy(p.get("active"))]
+    posts = [p for p in all_posts if p["platform"] in allowed]
+    accounts = [a for a in store.read("st_accounts") if a.get("id") and truthy(a.get("active")) and a["platform"] in allowed]
     prev_summary = {r["post_id"]: r for r in store.read("st_summary")}
-    log.info("tracking %d posts, %d accounts", len(posts), len(accounts))
+    log.info("platforms=%s: tracking %d posts, %d accounts", ",".join(sorted(allowed)), len(posts), len(accounts))
 
     failures = 0
     ig_auth_failed = False
@@ -160,29 +163,32 @@ def main() -> int:
 
     # ---- summary: latest numbers + recent history (for 24h deltas) -------------
     cutoff = datetime.now(timezone.utc) - timedelta(hours=HIST_HOURS)
-    summary = []
+    mine = {}
     for post in posts:
         pid = post["id"]
+        if pid not in fresh:
+            continue
         old = prev_summary.get(pid)
-        if pid in fresh:
-            f = fresh[pid]
-            try:
-                hist = json.loads(old["hist"]) if old and old.get("hist") else []
-            except ValueError:
-                hist = []
-            hist = [h for h in hist if datetime.fromisoformat(h[0]) >= cutoff]
-            hist.append([f["taken_at"], f["likes"], f["comments"], f["views"]])
-            summary.append({"post_id": pid, "last_taken_at": f["taken_at"], "likes": f["likes"],
-                            "comments": f["comments"], "views": f["views"], "shares": f["shares"],
-                            "hist": json.dumps(hist, separators=(",", ":"))})
-        elif old:
-            summary.append(old)
+        f = fresh[pid]
+        try:
+            hist = json.loads(old["hist"]) if old and old.get("hist") else []
+        except ValueError:
+            hist = []
+        hist = [h for h in hist if datetime.fromisoformat(h[0]) >= cutoff]
+        hist.append([f["taken_at"], f["likes"], f["comments"], f["views"]])
+        mine[pid] = {"post_id": pid, "last_taken_at": f["taken_at"], "likes": f["likes"],
+                     "comments": f["comments"], "views": f["views"], "shares": f["shares"],
+                     "hist": json.dumps(hist, separators=(",", ":"))}
 
     # ---- flush: a handful of batched API calls ---------------------------------
     store.append("st_snapshots", new_snaps)
     store.append("st_account_snapshots", new_acc_snaps)
     store.append("st_alerts", new_alerts)
-    store.replace_all("st_summary", summary)
+    # Re-read right before writing so rows written meanwhile by another machine are kept.
+    current = {r["post_id"]: r for r in store.read("st_summary")}
+    current.update(mine)
+    live_ids = {p["id"] for p in all_posts}
+    store.replace_all("st_summary", [r for pid, r in current.items() if pid in live_ids])
     store.update_cells("st_posts", post_changes)
     store.update_cells("st_accounts", acc_changes)
 
