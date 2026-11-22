@@ -20,6 +20,9 @@ export interface PostRow {
   likes_24h: number | null;
   comments_24h: number | null;
   views_24h: number | null;
+  interval_min: number | null; // per-post tracking interval override (minutes); null = platform default
+  spark: number[];             // recent likes values for the sparkline
+  spark_views: number[];
 }
 
 export interface Snapshot {
@@ -57,4 +60,40 @@ export interface NewPost {
   url: string;
   author?: string | null;
   campaign?: string | null;
+}
+
+export interface Settings {
+  interval_instagram: number; // minutes between checks, per platform
+  interval_twitter: number;
+  interval_youtube: number;
+  alert_spike_pct: number;
+  alert_spike_min: number;
+}
+
+export const DEFAULT_SETTINGS: Settings = {
+  interval_instagram: 360,
+  interval_twitter: 60,
+  interval_youtube: 60,
+  alert_spike_pct: 25,
+  alert_spike_min: 50,
+};
+
+export interface OverviewPoint {
+  t: number;
+  likes: number;
+  comments: number;
+  views: number;
+  g_likes: number;    // growth since the start of the range
+  g_comments: number;
+  g_views: number;
+}
+
+export interface Overview {
+  series: OverviewPoint[];
+  growth: { likes: number; comments: number; views: number };
+  days: number;
+}
+
+export interface CompareResult {
+  series: Record<string, Snapshot[]>;
 }

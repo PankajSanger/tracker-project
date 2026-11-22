@@ -1,5 +1,5 @@
 // Browser-side calls to the app's own API routes (which talk to Google Sheets).
-import type { Account, AccountSnap, AlertRow, PostRow, Snapshot } from "./types";
+import type { Account, AccountSnap, AlertRow, CompareResult, Overview, PostRow, Settings, Snapshot } from "./types";
 
 export class Unauthorized extends Error {}
 
@@ -21,7 +21,7 @@ export const api = {
     const r = await fetch("/api/me", { cache: "no-store" });
     const b = await r.json();
     if (!r.ok) { const e: any = new Error("signed out"); e.demo = b.demo; throw e; }
-    return b as { email: string; demo: boolean };
+    return b as { email: string; demo: boolean; sheetUrl: string | null };
   },
   login: (email: string, password: string) => j<{ email: string }>("/api/login", send("POST", { email, password })),
   logout: () => j<{ ok: boolean }>("/api/logout", send("POST")),
@@ -29,10 +29,14 @@ export const api = {
   addPosts: (urls: string[], campaign: string) =>
     j<{ added: number; skipped: number; bad: string[] }>("/api/posts", send("POST", { urls, campaign })),
   post: (id: string) => j<{ post: PostRow; snapshots: Snapshot[] }>(`/api/posts/${id}`),
-  updatePost: (id: string, patch: { campaign?: string | null; active?: boolean }) => j(`/api/posts/${id}`, send("PATCH", patch)),
+  updatePost: (id: string, patch: { campaign?: string | null; active?: boolean; interval_min?: number | null }) => j(`/api/posts/${id}`, send("PATCH", patch)),
   deletePost: (id: string) => j(`/api/posts/${id}`, send("DELETE")),
   accounts: () => j<{ accounts: Account[]; snaps: AccountSnap[] }>("/api/accounts"),
   addAccount: (platform: string, handle: string) => j("/api/accounts", send("POST", { platform, handle })),
   deleteAccount: (id: string) => j(`/api/accounts/${id}`, send("DELETE")),
   alerts: () => j<AlertRow[]>("/api/alerts"),
+  settings: () => j<Settings>("/api/settings"),
+  saveSettings: (patch: Partial<Settings>) => j<Settings>("/api/settings", send("PUT", patch)),
+  overview: (days: number) => j<Overview>(`/api/overview?days=${days}`),
+  compare: (ids: string[]) => j<CompareResult>(`/api/compare?ids=${ids.join(",")}`),
 };

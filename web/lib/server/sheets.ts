@@ -4,12 +4,13 @@ import { JWT } from "google-auth-library";
 const API = "https://sheets.googleapis.com/v4/spreadsheets";
 
 export const TABS: Record<string, string[]> = {
-  st_posts: ["id", "platform", "url", "external_id", "title", "author", "campaign", "added_by", "active", "last_error", "created_at"],
+  st_posts: ["id", "platform", "url", "external_id", "title", "author", "campaign", "added_by", "active", "last_error", "created_at", "interval_min"],
   st_snapshots: ["post_id", "taken_at", "likes", "comments", "views", "shares"],
   st_summary: ["post_id", "last_taken_at", "likes", "comments", "views", "shares", "hist"],
   st_accounts: ["id", "platform", "handle", "active", "last_error", "created_at"],
   st_account_snapshots: ["account_id", "taken_at", "followers", "following", "posts_count"],
   st_alerts: ["created_at", "post_id", "kind", "message"],
+  st_settings: ["key", "value"],
 };
 
 export type Row = Record<string, string>;
@@ -56,8 +57,11 @@ export function ensureTabs(): Promise<void> {
       const missing = Object.keys(TABS).filter((t) => !have.has(t));
       if (missing.length) await call("POST", ":batchUpdate", { requests: missing.map((title) => ({ addSheet: { properties: { title } } })) });
       for (const t of Object.keys(TABS)) {
-        const first = await call("GET", `/values/${t}!A1:A1`);
-        if (!first.values) await call("PUT", `/values/${t}!A1?valueInputOption=RAW`, { values: [TABS[t]] });
+        const head = await call("GET", `/values/${t}!A1:Z1`);
+        const have = ((head.values?.[0] ?? []) as string[]).filter((x) => x !== "");
+        // empty tab -> write headers; older tab with fewer columns -> extend headers (never reorders existing columns)
+        if (have.length < TABS[t].length && have.every((h, i) => h === TABS[t][i]))
+          await call("PUT", `/values/${t}!A1?valueInputOption=RAW`, { values: [TABS[t]] });
       }
     })().catch((e) => { ensured = null; throw e; });
   }
@@ -102,3 +106,22 @@ export async function deleteRowById(tab: string, id: string): Promise<void> {
     requests: [{ deleteDimension: { range: { sheetId, dimension: "ROWS", startIndex: row - 1, endIndex: row } } }],
   });
 }
+
+/** Upsert key/value rows (column A = key, column B = value) in a few calls. */
+export async function upsertKV(tab: string, kv: Record<string, string>): Promise<void> {
+  await ensureTabs();
+  const existing = await call("GET", `/values/${tab}!A2:B`);
+  const row = new Map<string, number>();
+  ((existing.values ?? []) as string[][]).forEach((r, i) => { if (r[0]) row.set(r[0], i + 2); });
+  const data: { range: string; values: string[][] }[] = [];
+  const fresh: Record<string, unknown>[] = [];
+  for (const [k, v] of Object.entries(kv)) {
+    const r = row.get(k);
+    if (r) data.push({ range: `${tab}!B${r}`, values: [[v]] });
+    else fresh.push({ key: k, value: v });
+  }
+  if (data.length) await call("POST", "/values:batchUpdate", { valueInputOption: "RAW", data });
+  if (fresh.length) await appendRows(tab, fresh);
+}
+
+export const sheetUrl = () => `https://docs.google.com/spreadsheets/d/${process.env.SPREADSHEET_ID}/edit`;

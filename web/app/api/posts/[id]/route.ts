@@ -14,9 +14,13 @@ export const GET = authed(async (_user, _req: Request, { params }: Ctx) => {
 
 export const PATCH = authed(async (_user, req: Request, { params }: Ctx) => {
   const b = await req.json().catch(() => ({}));
-  const patch: { campaign?: string | null; active?: boolean } = {};
+  const patch: { campaign?: string | null; active?: boolean; interval_min?: number | null } = {};
   if ("campaign" in b) patch.campaign = String(b.campaign ?? "").trim().slice(0, 60) || null;
   if ("active" in b) patch.active = !!b.active;
+  if ("interval_min" in b) {
+    const v = Number(b.interval_min);
+    patch.interval_min = b.interval_min === null || !Number.isFinite(v) || v <= 0 ? null : Math.min(Math.max(Math.round(v), 15), 7 * 1440);
+  }
   await store.updatePost(params.id, patch);
   return NextResponse.json({ ok: true });
 });

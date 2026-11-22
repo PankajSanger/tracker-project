@@ -6,5 +6,5 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const email = currentUser();
-  return NextResponse.json({ email, demo: store.demo }, { status: email ? 200 : 401 });
+  return NextResponse.json({ email, demo: store.demo, sheetUrl: email ? store.sheetUrl : null }, { status: email ? 200 : 401 });
 }

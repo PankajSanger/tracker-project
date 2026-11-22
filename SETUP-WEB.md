@@ -1,12 +1,12 @@
 # Social Tracker - Instagram, X and YouTube (Google Sheets + Vercel, free)
 
 ```
-GitHub Actions (hourly)  --scrapes-->  Google Sheet (st_* tabs)  <--API routes--  Next.js site on Vercel
+GitHub Actions + your PC  --scrapes-->  Google Sheet (st_* tabs)  <--API routes--  Next.js site on Vercel
    scraper/scrape.py                    your spreadsheet                          web/   (team logins)
 ```
 - **Data** lives in a Google Sheet you own. You can open it, filter it, chart it, export it.
 - **Website** (Vercel) reads/writes the sheet through server-side API routes using a service account. The key never reaches the browser.
-- **Scraper** (Python, GitHub Actions) runs hourly, because Vercel's free plan can't run long jobs or a browser.
+- **Scraper** (Python) runs on GitHub Actions every 30 minutes (X, and YouTube once a `YT_API_KEY` secret exists) and on a PC every hour (Instagram, YouTube), because Vercel's free plan can't run long jobs or a browser.
 
 ## 1. The spreadsheet
 Use your existing `tracking` spreadsheet or a new one. The app only creates and touches its own tabs, named `st_posts`, `st_snapshots`,
@@ -17,7 +17,7 @@ Use your existing `tracking` spreadsheet or a new one. The app only creates and 
 
 Capacity: a Google Sheet holds 10 million cells. One snapshot = 6 cells, so 100 posts tracked hourly use ~14,000 cells/day (about 2 years of room, shared with anything else in the file).
 
-## 2. GitHub (runs the scraper hourly - free)
+## 2. GitHub (runs the scraper every 30 minutes - free)
 1. Push this folder to a GitHub repo (`.gitignore` already keeps keys, cookies and `.env` files out).
 2. Settings -> Secrets and variables -> Actions -> **Secrets**:
    - `SPREADSHEET_ID`
@@ -30,7 +30,7 @@ Capacity: a Google Sheet holds 10 million cells. One snapshot = 6 cells, so 100 
 Instagram logs a session out or limits the account when it is suddenly used from a datacenter address, so GitHub only scrapes YouTube and X
 (`PLATFORMS=youtube,twitter` in the workflow) and Instagram runs from a PC:
 1. `cd scraper`, then `..\venv\Scripts\python.exe ig_login.py` - log in once in the Chrome window. It saves the session to `scraper\.env` (git-ignored) next to `SPREADSHEET_ID` and `GOOGLE_SERVICE_ACCOUNT_FILE`.
-2. Task `SocialTrackerInstagram` (created on the setup PC) runs `scraper\run_scrape.bat` every 6 hours while you are logged in to Windows; missed runs start when the PC is back. Log: `scraper\logs\scrape.log`. You can also double-click `run_scrape.bat` for a refresh, but do not run it repeatedly.
+2. Task `SocialTrackerInstagram` (created on the setup PC) runs `scraper\run_scrape.bat` every hour while you are logged in to Windows (it only fetches posts that are due); missed runs start when the PC is back. Log: `scraper\logs\scrape.log`. You can also double-click `run_scrape.bat` for a refresh, but do not run it repeatedly.
 3. If Instagram answers "Try Again Later" (`feedback_required`), the run stops immediately, marks the posts "Instagram is limiting this account", and tries again next time. Raising the frequency or running it by hand repeatedly prolongs the block. Fewer posts and longer intervals are safer for the account.
 
 ## 3. Vercel (the website - free "Hobby" plan)
@@ -54,7 +54,16 @@ Without `SPREADSHEET_ID` the site runs in **demo mode** on sample data (any logi
 - Add/remove people or change a password: edit `TEAM_USERS` in Vercel, then Redeploy. Passwords are stored only there.
 - A teammate adds posts by pasting URLs; the first numbers appear after the next hourly run (or run **scrape** from the Actions tab for instant data).
 
+## Tracking intervals (dashboard -> Settings)
+Choose how often each platform is checked (15 minutes to 7 days), and override it per post on the post's page. The runners wake up every 30 minutes
+(GitHub) / hourly (PC) and each post is only fetched when it is **due**, so the real minimum is the runner cadence. Instagram defaults to 6 hours; going below
+3 hours risks the account being limited. Run **scrape** from the Actions tab for an immediate refresh of everything (manual runs ignore the intervals).
+Alert thresholds (spike/drop %) are also set there. The two machines coordinate through the sheet: whichever sees a post as due fetches it.
+
 ## Features
+- Overview with KPI cards + sparklines, growth chart (24h/7d/30d/all), platform split, fastest growing / top performing / needs attention
+- Post detail: custom date range, hourly/daily/each-check granularity, total vs growth view, engagement rate
+- Compare up to 6 posts (indexed growth or absolute); bulk pause/resume/campaign; search and filters; table or card view; light/dark theme
 - Instagram / X / YouTube posts; bulk-paste URLs (watch, youtu.be, shorts links all work), campaign tags, pause/delete
 - Dashboard totals, 24h change, sort/filter by platform, campaign, teammate; CSV export
 - Per-post growth chart (1d / 7d / 30d / all) with snapshot-by-snapshot deltas

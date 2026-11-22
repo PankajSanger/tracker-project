@@ -1,4 +1,4 @@
-import type { Platform } from "./types";
+import type { Platform, PostRow } from "./types";
 
 export function parsePostUrl(
   raw: string
@@ -53,3 +53,41 @@ export function download(name: string, text: string) {
 
 export const PLATFORM_LABEL: Record<string, string> = { instagram: "Instagram", twitter: "X / Twitter", youtube: "YouTube" };
 export const PLATFORM_SHORT: Record<string, string> = { instagram: "IG", twitter: "X", youtube: "YT" };
+
+/* ---------------------------------------------------------------- extras */
+
+export const INTERVALS = [15, 30, 60, 180, 360, 720, 1440];
+
+export const intervalLabel = (m: number) =>
+  m < 60 ? `${m} min` : m % 1440 === 0 ? `${m / 1440} day${m / 1440 > 1 ? "s" : ""}` : `${m / 60} hour${m / 60 > 1 ? "s" : ""}`;
+
+export const PLATFORM_COLOR: Record<string, string> = { instagram: "#c026d3", youtube: "#ff0033", twitter: "#6b7190" };
+
+/** (likes + comments) / views, in percent. Null when views are unknown. */
+export const engagement = (p: { likes: number | null; comments: number | null; views: number | null }) =>
+  p.views && p.views > 0 ? (((p.likes ?? 0) + (p.comments ?? 0)) / p.views) * 100 : null;
+
+export const pct = (n: number | null | undefined, digits = 1) => (n === null || n === undefined ? "-" : `${n.toFixed(digits)}%`);
+
+export const postTitle = (p: Pick<PostRow, "title" | "author" | "external_id">) => p.title || p.author || p.external_id;
+
+export function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const y = new Date(Date.now() - 864e5);
+  if (d.toDateString() === today.toDateString()) return "Today";
+  if (d.toDateString() === y.toDateString()) return "Yesterday";
+  return d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+}
+
+/** Effective tracking interval for a post: its override, else the platform default from settings. */
+export const effectiveInterval = (p: Pick<PostRow, "interval_min" | "platform">, defaults: Record<string, number>) =>
+  p.interval_min ?? defaults[`interval_${p.platform}`] ?? 60;
+
+/** A post is stale when its newest numbers are older than 2.5x its interval (or it never got any). */
+export function isStale(p: Pick<PostRow, "last_taken_at" | "active" | "created_at">, intervalMin: number): boolean {
+  if (!p.active) return false;
+  const ref = p.last_taken_at ?? null;
+  if (!ref) return Date.now() - new Date(p.created_at).getTime() > Math.max(intervalMin, 120) * 60000 * 1.5;
+  return Date.now() - new Date(ref).getTime() > intervalMin * 60000 * 2.5;
+}

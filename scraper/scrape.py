@@ -38,6 +38,9 @@ log = logging.getLogger("scrape")
 
 SPIKE_PCT = float(os.getenv("ALERT_SPIKE_PCT", "25"))  # % change between runs
 SPIKE_MIN = int(os.getenv("ALERT_SPIKE_MIN", "50"))    # ...and at least this many
+spike_pct, spike_min = SPIKE_PCT, SPIKE_MIN            # overridden by the dashboard settings in main()
+DEFAULT_INTERVAL = {"instagram": 360, "twitter": 60, "youtube": 60}  # minutes; changeable in the dashboard
+FORCE = os.getenv("FORCE") == "1"                      # manual runs ignore the interval
 HIST_HOURS = 60                                        # recent points kept per post for 24h deltas
 MAX_RETRIES = 2
 MODULES = {"instagram": instagram, "twitter": twitter, "youtube": youtube}
@@ -61,6 +64,21 @@ def with_retries(fn, *args):
             time.sleep(5 * (attempt + 1))
 
 
+def interval_minutes(item: dict, settings: dict) -> int:
+    """Per-post override, else the dashboard's platform setting, else the built-in default."""
+    return num(item.get("interval_min")) or num(settings.get(f"interval_{item['platform']}")) or DEFAULT_INTERVAL.get(item["platform"], 60)
+
+
+def is_due(last_iso, minutes: int) -> bool:
+    if FORCE or not last_iso:
+        return True
+    try:
+        age = datetime.now(timezone.utc) - datetime.fromisoformat(last_iso)
+    except ValueError:
+        return True
+    return age >= timedelta(minutes=minutes * 0.85)  # tolerance for cron jitter
+
+
 def spike_alerts(post: dict, prev: dict, cur: dict) -> list:
     out = []
     for metric in ("likes", "views", "comments"):
@@ -69,7 +87,7 @@ def spike_alerts(post: dict, prev: dict, cur: dict) -> list:
             continue
         diff = b - a
         pct = (diff / a * 100) if a else 100.0
-        if abs(diff) >= SPIKE_MIN and abs(pct) >= SPIKE_PCT:
+        if abs(diff) >= spike_min and abs(pct) >= spike_pct:
             kind = "spike" if diff > 0 else "drop"
             msg = f"{post['platform']} {kind}: {metric} {a:,} -> {b:,} ({pct:+.0f}%) {post['url']}"
             out.append({"created_at": now_iso(), "post_id": post["id"], "kind": kind, "message": msg})
@@ -86,6 +104,14 @@ def main() -> int:
     posts = [p for p in all_posts if p["platform"] in allowed]
     accounts = [a for a in store.read("st_accounts") if a.get("id") and truthy(a.get("active")) and a["platform"] in allowed]
     prev_summary = {r["post_id"]: r for r in store.read("st_summary")}
+    settings = {r["key"]: r["value"] for r in store.read("st_settings")}
+    global spike_pct, spike_min
+    spike_pct = float(settings.get("alert_spike_pct") or SPIKE_PCT)
+    spike_min = float(settings.get("alert_spike_min") or SPIKE_MIN)
+    last_acc: dict = {}
+    for r in store.read("st_account_snapshots"):
+        last_acc[r["account_id"]] = r["taken_at"]  # rows are chronological
+    skipped = 0
     log.info("platforms=%s: tracking %d posts, %d accounts", ",".join(sorted(allowed)), len(posts), len(accounts))
 
     failures = 0
@@ -98,6 +124,9 @@ def main() -> int:
 
     for post in posts:
         pid = post["id"]
+        if not is_due((prev_summary.get(pid) or {}).get("last_taken_at"), interval_minutes(post, settings)):
+            skipped += 1
+            continue
         if post["platform"] == "instagram" and (ig_auth_failed or ig_blocked):
             if ig_blocked:
                 post_changes[pid] = {"last_error": "Instagram is limiting this account - will retry next run"}
@@ -142,6 +171,9 @@ def main() -> int:
 
     ig_retry: list = []
     for acc in accounts:
+        if not is_due(last_acc.get(acc["id"]), interval_minutes(acc, settings)):
+            skipped += 1
+            continue
         if acc["platform"] == "instagram" and (ig_auth_failed or ig_blocked):
             continue
         try:
@@ -202,8 +234,8 @@ def main() -> int:
     store.update_cells("st_posts", post_changes)
     store.update_cells("st_accounts", acc_changes)
 
-    log.info("Done. snapshots=%d account_snapshots=%d alerts=%d failures=%d",
-             len(new_snaps), len(new_acc_snaps), len(new_alerts), failures)
+    log.info("Done. snapshots=%d account_snapshots=%d alerts=%d failures=%d not-due-yet=%d",
+             len(new_snaps), len(new_acc_snaps), len(new_alerts), failures, skipped)
     return 0  # individual scrape errors are recorded in the sheet, not by failing the workflow
 
 
