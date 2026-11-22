@@ -57,6 +57,8 @@ def _get(url: str) -> requests.Response:
         raise AuthError(f"Instagram rejected the session (HTTP {r.status_code}) - refresh IG_SESSIONID")
     if r.status_code == 429:
         raise RuntimeError("Instagram rate limit (429)")
+    if r.status_code == 400 and "/media/" in url:
+        raise RuntimeError("post unavailable (deleted, private or restricted)")
     r.raise_for_status()
     return r
 
