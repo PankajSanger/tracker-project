@@ -22,9 +22,16 @@ Capacity: a Google Sheet holds 10 million cells. One snapshot = 6 cells, so 100 
 2. Settings -> Secrets and variables -> Actions -> **Secrets**:
    - `SPREADSHEET_ID`
    - `GOOGLE_SERVICE_ACCOUNT_JSON` - paste the whole key file contents
-   - `IG_SESSIONID`, `IG_CSRFTOKEN`, `IG_DS_USER_ID` - run `cd scraper` then `..\venv\Scripts\python.exe ig_login.py`, log in once in the Chrome window, copy the values from `scraper/.env`. Use a secondary Instagram account.
+   - **Not** the Instagram values: Instagram deliberately does not run on GitHub (see section 2b).
    - optional: `YT_API_KEY` (free YouTube Data API v3 key: adds comment counts), `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` (phone alerts)
 3. Actions tab -> **scrape** -> Run workflow. Check the sheet: `st_snapshots` should fill. It then runs every hour.
+
+## 2b. Instagram runs on your PC (Windows Task Scheduler)
+Instagram logs a session out or limits the account when it is suddenly used from a datacenter address, so GitHub only scrapes YouTube and X
+(`PLATFORMS=youtube,twitter` in the workflow) and Instagram runs from a PC:
+1. `cd scraper`, then `..\venv\Scripts\python.exe ig_login.py` - log in once in the Chrome window. It saves the session to `scraper\.env` (git-ignored) next to `SPREADSHEET_ID` and `GOOGLE_SERVICE_ACCOUNT_FILE`.
+2. Task `SocialTrackerInstagram` (created on the setup PC) runs `scraper\run_scrape.bat` every 6 hours while you are logged in to Windows; missed runs start when the PC is back. Log: `scraper\logs\scrape.log`. You can also double-click `run_scrape.bat` for a refresh, but do not run it repeatedly.
+3. If Instagram answers "Try Again Later" (`feedback_required`), the run stops immediately, marks the posts "Instagram is limiting this account", and tries again next time. Raising the frequency or running it by hand repeatedly prolongs the block. Fewer posts and longer intervals are safer for the account.
 
 ## 3. Vercel (the website - free "Hobby" plan)
 1. vercel.com -> Add New -> Project -> import the GitHub repo. Set **Root Directory = `web`** (Next.js is detected).
@@ -60,7 +67,7 @@ Scraper: `cd scraper`, put `SPREADSHEET_ID`, `GOOGLE_SERVICE_ACCOUNT_FILE=..\key
 (`archive/supabase/` holds the earlier Supabase version of the database; it is not used.)
 
 ## Know the limits
-- **Instagram** needs a logged-in session cookie. It expires every few months: the dashboard shows the error; re-run `ig_login.py` and update the GitHub secrets. Automated access breaks Instagram's terms and can restrict the account, so use a throwaway account. Instagram may challenge GitHub's datacenter IPs; if so, run `scrape.py` on your own PC on a schedule instead (same code, same sheet).
+- **Instagram** needs a logged-in session cookie that lives only on the PC (never on GitHub). It can expire or get rate-limited: the dashboard shows the error; re-run `ig_login.py`. Automated access breaks Instagram's terms and can get the account restricted - one first burst of 27 requests already got the account temporarily limited - so use a throwaway account and keep the interval at 6 hours or more.
 - **Instagram follower counts**: the profile API is rate-limited hard (HTTP 429). Set `IG_BROWSER_FALLBACK=1` in `scraper/.env` and run on your PC: it reads the profile page in a real logged-in Chrome (counts abbreviated by Instagram, e.g. 966K). Can't run on GitHub Actions.
 - **YouTube**: no login. Keyless mode gives views + likes (no comments) and rounded subscribers; `YT_API_KEY` adds comments.
 - **X/Twitter**: no login. Likes/replies from X's public embed endpoint; retweets and followers from the free FixTweet API (third party, may change). Views are usually unavailable.
