@@ -37,6 +37,8 @@ const PATHS: Record<string, ReactNode> = {
   arrowdown: <><line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" /></>,
   rows: <><rect x="3" y="4" width="18" height="6" rx="1.5" /><rect x="3" y="14" width="18" height="6" rx="1.5" /></>,
   save: <><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></>,
+  link: <><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></>,
+  report: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="17" x2="8" y2="13" /><line x1="12" y1="17" x2="12" y2="11" /><line x1="16" y1="17" x2="16" y2="15" /></>,
 };
 
 export function Icon({ name, size = 18, stroke = 2 }: { name: keyof typeof PATHS | string; size?: number; stroke?: number }) {
@@ -62,6 +64,34 @@ export function PlatformMark({ platform, size = 24 }: { platform: Platform; size
         <svg width={s} height={s} viewBox="0 0 24 24" fill="currentColor"><path d="M17.75 3h3.07l-6.7 7.66L22 21h-6.17l-4.83-6.32L5.47 21H2.4l7.17-8.2L2 3h6.33l4.37 5.78L17.75 3zm-1.08 16.16h1.7L7.4 4.74H5.58l11.09 14.42z" /></svg>
       )}
     </span>
+  );
+}
+
+/** Post image with a small platform badge; falls back to the platform mark when there is no image or it failed to load
+ *  (Instagram image links expire after some days and are refreshed by the next check). */
+export function Thumb({ src, platform, size = 40, badge = true }: { src: string | null | undefined; platform: Platform; size?: number; badge?: boolean }) {
+  const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [src]);
+  if (!src || broken) return <PlatformMark platform={platform} size={size} />;
+  return (
+    <span className="thumb" style={{ width: size, height: size }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} />
+      {badge && <span className="thumb-badge"><PlatformMark platform={platform} size={Math.max(14, Math.round(size * 0.38))} /></span>}
+    </span>
+  );
+}
+
+/** Wide post image for card views; renders nothing if the image is missing or fails. */
+export function Cover({ src, height = 150 }: { src: string | null | undefined; height?: number }) {
+  const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [src]);
+  if (!src || broken) return null;
+  return (
+    <div className="cover" style={{ height }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} />
+    </div>
   );
 }
 

@@ -1,5 +1,5 @@
 // Browser-side calls to the app's own API routes (which talk to Google Sheets).
-import type { Account, AccountSnap, AlertRow, CompareResult, Overview, PostRow, Settings, Snapshot } from "./types";
+import type { Account, AccountSnap, AlertRow, CompareResult, Overview, PostRow, Report, Settings, ShareLink, Snapshot } from "./types";
 
 export class Unauthorized extends Error {}
 
@@ -40,4 +40,18 @@ export const api = {
   saveSettings: (patch: Partial<Settings>) => j<Settings>("/api/settings", send("PUT", patch)),
   overview: (days: number) => j<Overview>(`/api/overview?days=${days}`),
   compare: (ids: string[]) => j<CompareResult>(`/api/compare?ids=${ids.join(",")}`),
+  shares: () => j<ShareLink[]>("/api/shares"),
+  createShare: (campaign: string | null) => j<ShareLink>("/api/shares", send("POST", { campaign })),
+  revokeShare: (token: string) => j(`/api/shares?token=${encodeURIComponent(token)}`, send("DELETE")),
 };
+
+/** Report data; works signed out when a share token is given (no reload-on-401 here). */
+export async function fetchReport(opts: { token?: string | null; campaign?: string | null; days: number }): Promise<Report> {
+  const q = new URLSearchParams({ days: String(opts.days) });
+  if (opts.token) q.set("t", opts.token);
+  else if (opts.campaign !== null && opts.campaign !== undefined) q.set("c", opts.campaign);
+  const r = await fetch(`/api/report?${q}`, { cache: "no-store" });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) { const e: any = new Error(body.error || r.statusText); e.status = r.status; throw e; }
+  return body as Report;
+}

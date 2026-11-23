@@ -24,6 +24,44 @@ export interface PostRow {
   interval_min: number | null; // per-post tracking interval override (minutes); null = platform default
   spark: number[];             // recent likes values for the sparkline
   spark_views: number[];
+  thumbnail: string | null;    // post image (Instagram links expire; the scraper refreshes them on every check)
+}
+
+/** A read-only report link for clients. campaign null = all posts. */
+export interface ShareLink {
+  token: string;
+  campaign: string | null;
+  created_by: string;
+  created_at: string;
+}
+
+export interface ReportPost {
+  id: string;
+  platform: Platform;
+  url: string;
+  title: string | null;
+  author: string | null;
+  campaign: string | null;
+  thumbnail: string | null;
+  created_at: string;
+  last_taken_at: string | null;
+  likes: number | null;
+  comments: number | null;
+  views: number | null;
+  g_likes: number;     // growth inside the report period
+  g_comments: number;
+  g_views: number;
+}
+
+export interface Report {
+  campaign: string | null;
+  days: number;            // 0 = all time
+  generated_at: string;
+  first_at: string | null; // earliest data point of these posts
+  posts: ReportPost[];
+  overview: Overview;
+  totals: { likes: number; comments: number; views: number; posts: number };
+  shared: boolean;         // opened through a share link (read-only client view)
 }
 
 export interface Snapshot {

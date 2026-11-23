@@ -11,8 +11,9 @@ from apify_api import ApifyError
 class InstagramMapping(unittest.TestCase):
     def test_reel_views_likes_comments(self):
         d = ig.map_post({"shortCode": "Df9", "likesCount": 5912, "commentsCount": 94, "videoPlayCount": 4390047,
-                         "videoViewCount": 1200000, "ownerUsername": "burgerkingindia", "caption": "hi\nthere"})
+                         "videoViewCount": 1200000, "ownerUsername": "burgerkingindia", "caption": "hi\nthere", "displayUrl": "https://cdn/x.jpg"})
         self.assertEqual((d["likes"], d["comments"], d["views"], d["author"], d["title"]), (5912, 94, 4390047, "burgerkingindia", "hi there"))
+        self.assertEqual(d["thumbnail"], "https://cdn/x.jpg")
 
     def test_image_has_no_views_and_hidden_likes(self):
         d = ig.map_post({"likesCount": -1, "commentsCount": 9})
@@ -49,10 +50,10 @@ class YouTubeMapping(unittest.TestCase):
 
 class TwitterMapping(unittest.TestCase):
     def test_tweet(self):
-        item = {"id": "123", "likeCount": 10, "replyCount": 2, "retweetCount": 3, "viewCount": 900, "author": {"userName": "NASA"}, "text": "x"}
+        item = {"id": "123", "likeCount": 10, "replyCount": 2, "retweetCount": 3, "viewCount": 900, "author": {"userName": "NASA", "profilePicture": "https://pic"}, "text": "x"}
         with mock.patch.object(tw, "run_actor", return_value=[item]):
             out = tw.fetch_posts(["123"])
-        self.assertEqual(out["123"], {"likes": 10, "comments": 2, "views": 900, "shares": 3, "author": "NASA", "title": "x"})
+        self.assertEqual(out["123"], {"likes": 10, "comments": 2, "views": 900, "shares": 3, "author": "NASA", "title": "x", "thumbnail": "https://pic"})
 
     def test_free_plan_mock_is_an_apify_error(self):
         with mock.patch.object(tw, "run_actor", return_value=[{"type": "mock_tweet", "id": -1}]):

@@ -177,6 +177,8 @@ def main() -> int:
                 ch["author"] = data["author"]
             if not post.get("title") and data.get("title"):
                 ch["title"] = data["title"]
+            if data.get("thumbnail") and data["thumbnail"] != post.get("thumbnail"):
+                ch["thumbnail"] = data["thumbnail"]  # always the latest link (Instagram's expire)
             post_changes[pid] = ch
             new_alerts += spike_alerts(post, prev_summary.get(pid, {}), data)
             log.info("OK   %s %s %s", platform, post["external_id"], {k: row[k] for k in METRICS})

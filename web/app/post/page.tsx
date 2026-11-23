@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { DEFAULT_SETTINGS } from "@/lib/types";
 import type { PostRow, Settings, Snapshot } from "@/lib/types";
 import { ago, delta, download, engagement, fmt, INTERVALS, intervalLabel, pct, postTitle, toCsv, viewsStale, PLATFORM_LABEL } from "@/lib/utils";
-import { DeltaChip, Empty, Icon, Kpi, PlatformMark, Seg, Skeleton, useToast } from "@/components/ui";
+import { DeltaChip, Empty, Icon, Kpi, PlatformMark, Seg, Skeleton, Thumb, useToast } from "@/components/ui";
 import { AXIS, GRID, TipCard } from "@/components/charts";
 
 type Range = "24h" | "7d" | "30d" | "90d" | "all" | "custom";
@@ -113,7 +113,7 @@ function PostDetail() {
     <>
       <div className="page-head">
         <Link href="/posts" className="btn icon ghost" title="Back"><Icon name="arrowleft" size={16} /></Link>
-        <PlatformMark platform={post.platform} size={38} />
+        <Thumb src={post.thumbnail} platform={post.platform} size={56} />
         <div style={{ minWidth: 0, flex: 1 }}>
           <h1 style={{ fontSize: 20, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{postTitle(post)}</h1>
           <div className="sub" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>

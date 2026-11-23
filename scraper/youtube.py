@@ -29,6 +29,7 @@ def map_post(item: Dict[str, Any]) -> Dict[str, Any]:
         "shares": None,
         "author": item.get("channelName"),
         "title": (item.get("title") or "")[:80] or None,
+        "thumbnail": item.get("thumbnailUrl") or None,
     }
 
 

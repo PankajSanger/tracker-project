@@ -37,7 +37,18 @@ def map_post(item: Dict[str, Any]) -> Dict[str, Any]:
         "shares": _count(item.get("retweetCount")),
         "author": author.get("userName") if isinstance(author, dict) else None,
         "title": ((item.get("text") or item.get("fullText") or "").replace("\n", " ")[:80]) or None,
+        "thumbnail": _thumb(item),
     }
+
+
+def _thumb(item: Dict[str, Any]) -> Optional[str]:
+    """First attached photo/video still, else the author's profile picture."""
+    for key in ("extendedEntities", "entities"):
+        media = (item.get(key) or {}).get("media") or []
+        if media and isinstance(media[0], dict) and media[0].get("media_url_https"):
+            return media[0]["media_url_https"]
+    author = item.get("author") or {}
+    return author.get("profilePicture") if isinstance(author, dict) else None
 
 
 def fetch_posts(ids: List[str]) -> Dict[str, Any]:

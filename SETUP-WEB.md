@@ -79,6 +79,10 @@ month / year in India time, taken by the first run after midnight. A new account
 - Compare up to 6 posts (indexed growth or absolute); bulk pause/resume/campaign; search and filters; table or card view; light/dark theme
 - Bulk-paste URLs (Instagram, YouTube watch / youtu.be / shorts, X), campaign tags, pause/delete, CSV export
 - Account tracking (followers / subscribers over time), spike/drop alerts + optional Telegram push
+- Post thumbnails everywhere (tables, cards, reports)
+- **Reports** page: a client-ready report per campaign (or all posts) with KPIs, growth chart, platform split and a content table.
+  **Download PDF** prints it on A4. **New client link** makes a secret read-only link (no login, only that campaign, live numbers);
+  links are listed per campaign and can be revoked any time.
 
 ## Local run
 Website: `cd web`, copy `.env.local.example` to `.env.local` (fill in), `npm install`, `npm run dev` -> http://localhost:3000.

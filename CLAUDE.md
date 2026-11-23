@@ -20,12 +20,14 @@ Repo: github.com/PankajSanger/tracker-project (public, branch main). `gh` lives 
 GitHub secrets: SPREADSHEET_ID, GOOGLE_SERVICE_ACCOUNT_JSON, APIFY_TOKEN (+ optional TELEGRAM_*).
 
 ## Sheet tabs (schema = scraper/sheets_store.py TABS, mirrored in web/lib/server/sheets.ts)
-- st_posts: id, platform, url, external_id, title, author, campaign, added_by, active, last_error, created_at, interval_min
+- st_posts: id, platform, url, external_id, title, author, campaign, added_by, active, last_error, created_at, interval_min, thumbnail
+  (thumbnail refreshed by every scrape - Instagram CDN links expire; web falls back to i.ytimg.com for YouTube and to the platform icon)
 - st_snapshots: post_id, taken_at, likes, comments, views, shares        (append-only history)
 - st_summary: post_id, last_taken_at, likes, comments, views, shares, hist(JSON ~60h), views_at   (one row per post, fast reads)
 - st_accounts / st_account_snapshots (followers, following, posts_count) / st_alerts
 - st_settings key/value: interval_<platform>, alert_spike_pct/min, `check_now:<post_id>` = ISO time (scraper clears it),
-  account_period_days (1/7/30/365 = followers once per calendar day/ISO week/month/year, IST via TRACK_TZ_OFFSET_MIN=330; default 1)
+  account_period_days (1/7/30/365 = followers once per calendar day/ISO week/month/year, IST via TRACK_TZ_OFFSET_MIN=330; default 1),
+  `share:<token>` = JSON {c: campaign|null, by, at} client report links (value "" = revoked)
 - Old tabs `input`, `tracking_data` belong to the legacy script - never touch.
 
 ## scraper/ (Python, venv at ..\venv; deps: requests, google-auth only)
@@ -47,8 +49,11 @@ GitHub secrets: SPREADSHEET_ID, GOOGLE_SERVICE_ACCOUNT_JSON, APIFY_TOKEN (+ opti
   auth.ts (HMAC cookie session, TEAM_USERS "email:pass,..."), analytics.ts (deltas, growth, engagement).
 - lib: types.ts (PostRow, Settings, DEFAULT_SETTINGS), api.ts (client fetchers), hooks.ts, utils.ts (viewsStale, INTERVALS).
 - Pages: / overview, /posts (table+cards, bulk bar: check now/pause/delete), /post?id= (detail, interval override, Check now, Delete),
-  /compare, /accounts, /alerts, /settings. Components: Shell.tsx, ui.tsx, charts.tsx.
-- API: posts, posts/[id] (PATCH incl. check_now, DELETE), accounts(/[id]), alerts, compare, overview, settings, login/logout/me.
+  /compare, /accounts, /reports (campaign reports + client links), /alerts, /settings.
+  /report?c=Campaign (team) or /report?t=token (client, no login; Shell renders it bare) - "Download PDF" = window.print + @media print A4 CSS.
+  Components: Shell.tsx, ui.tsx (Thumb, Cover, Kpi...), charts.tsx. Theme: "enterprise navy" tokens in globals.css (--nav-*, --accent #1f5fd6).
+- API: posts, posts/[id] (PATCH incl. check_now, DELETE), accounts(/[id]), alerts, compare, overview, settings, login/logout/me,
+  shares (GET/POST/DELETE, team), report (?t= public read-only: campaign comes from the token only; else needs login). buildReport in analytics.ts.
 - Vercel env: SPREADSHEET_ID, GOOGLE_SERVICE_ACCOUNT_B64, TEAM_USERS, SESSION_SECRET. Deploy: `cd web; npx vercel --prod`.
 - Dev: `cd web; npm run dev` (demo mode without .env.local).
 

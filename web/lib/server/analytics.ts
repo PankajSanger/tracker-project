@@ -1,5 +1,5 @@
 // Pure helpers shared by the Sheets store and the demo store.
-import type { Overview, OverviewPoint, Snapshot } from "../types";
+import type { Overview, OverviewPoint, PostRow, Report, ReportPost, Snapshot } from "../types";
 
 export interface SnapRow extends Snapshot {
   post_id: string;
@@ -78,4 +78,36 @@ export function groupSeries(snaps: SnapRow[], ids: string[]): Record<string, Sna
   }
   for (const id of ids) out[id].sort((a, b) => a.taken_at.localeCompare(b.taken_at));
   return out;
+}
+
+/** Client report for a set of posts: totals now, growth inside the period, series and per-post numbers. */
+export function buildReport(posts: PostRow[], snaps: SnapRow[], days: number, campaign: string | null, shared: boolean): Report {
+  const ids = new Set(posts.map((p) => p.id));
+  const mine = snaps.filter((s) => ids.has(s.post_id));
+  const overview = buildOverview(mine, days, 60);
+  const start = days > 0 ? Date.now() - days * 864e5 : 0;
+  const byPost = new Map<string, SnapRow[]>();
+  for (const s of mine) {
+    if (!byPost.has(s.post_id)) byPost.set(s.post_id, []);
+    byPost.get(s.post_id)!.push(s);
+  }
+  let first: string | null = null;
+  const rows: ReportPost[] = posts.map((p) => {
+    const arr = (byPost.get(p.id) ?? []).sort((a, b) => a.taken_at.localeCompare(b.taken_at));
+    if (arr.length && (first === null || arr[0].taken_at < first)) first = arr[0].taken_at;
+    let base: SnapRow | undefined = arr[0];
+    for (const s of arr) if (new Date(s.taken_at).getTime() <= start) base = s;
+    const g = (k: "likes" | "comments" | "views", cur: number | null) => (cur === null || !base ? 0 : Math.max(0, cur - (base[k] ?? cur)));
+    return {
+      id: p.id, platform: p.platform, url: p.url, title: p.title, author: p.author, campaign: p.campaign, thumbnail: p.thumbnail,
+      created_at: p.created_at, last_taken_at: p.last_taken_at, likes: p.likes, comments: p.comments, views: p.views,
+      g_likes: g("likes", p.likes), g_comments: g("comments", p.comments), g_views: g("views", p.views),
+    };
+  });
+  rows.sort((a, b) => (b.views ?? -1) - (a.views ?? -1) || (b.likes ?? 0) - (a.likes ?? 0));
+  const sum = (k: "likes" | "comments" | "views") => rows.reduce((t, r) => t + (r[k] ?? 0), 0);
+  return {
+    campaign, days, generated_at: new Date().toISOString(), first_at: first, posts: rows, overview,
+    totals: { likes: sum("likes"), comments: sum("comments"), views: sum("views"), posts: rows.length }, shared,
+  };
 }

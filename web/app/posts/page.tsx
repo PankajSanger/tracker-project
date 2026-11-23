@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { usePosts } from "@/lib/hooks";
 import type { Platform, PostRow } from "@/lib/types";
 import { ago, delta, download, effectiveInterval, engagement, fmt, intervalLabel, isStale, pct, postTitle, toCsv, viewsStale, PLATFORM_LABEL } from "@/lib/utils";
-import { DeltaChip, Empty, Icon, PlatformMark, Seg, Skeleton, Sparkline, useToast } from "@/components/ui";
+import { DeltaChip, Empty, Icon, PlatformMark, Seg, Skeleton, Sparkline, Thumb, Cover, useToast } from "@/components/ui";
 
 type SortKey = "likes" | "views" | "comments" | "likes_24h" | "views_24h" | "eng" | "recent" | "added";
 
@@ -193,7 +193,7 @@ export default function PostsPage() {
                     <td className="c"><input type="checkbox" checked={sel.has(p.id)} onChange={() => toggle(p.id)} aria-label="Select" /></td>
                     <td className="l">
                       <div className="post-cell">
-                        <PlatformMark platform={p.platform} size={30} />
+                        <Thumb src={p.thumbnail} platform={p.platform} size={42} />
                         <div style={{ minWidth: 0 }}>
                           <Link href={`/post?id=${p.id}`} className="t" title={postTitle(p)}>{postTitle(p)}</Link>
                           <div className="s">
@@ -229,6 +229,7 @@ export default function PostsPage() {
         <div className="grid thirds">
           {shown.map((p) => (
             <div key={p.id} className="card post-card" style={{ opacity: p.active ? 1 : 0.6 }} onClick={() => router.push(`/post?id=${p.id}`)}>
+              {p.thumbnail && <Cover src={p.thumbnail} />}
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <PlatformMark platform={p.platform} size={28} />
                 <span className="muted small" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.author ?? PLATFORM_LABEL[p.platform]}</span>

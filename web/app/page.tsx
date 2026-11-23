@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { usePosts } from "@/lib/hooks";
 import type { Overview as OverviewData } from "@/lib/types";
 import { ago, effectiveInterval, engagement, fmt, isStale, pct, postTitle, PLATFORM_COLOR, PLATFORM_LABEL } from "@/lib/utils";
-import { DeltaChip, Empty, Icon, Kpi, PlatformMark, Seg, Skeleton, Sparkline, useToast } from "@/components/ui";
+import { DeltaChip, Empty, Icon, Kpi, PlatformMark, Seg, Skeleton, Sparkline, Thumb, useToast } from "@/components/ui";
 import { AXIS, GRID, TipCard } from "@/components/charts";
 
 const METRIC_COLOR = { views: "var(--views)", likes: "var(--likes)", comments: "var(--comments)" } as const;
@@ -172,6 +172,7 @@ export default function OverviewPage() {
                   {growing.map((p, i) => (
                     <Link href={`/post?id=${p.id}`} className="list-item" key={p.id}>
                       <span className="rank">{i + 1}</span>
+                      <Thumb src={p.thumbnail} platform={p.platform} size={34} />
                       <div className="grow"><div className="t">{postTitle(p)}</div><div className="muted small">{PLATFORM_LABEL[p.platform]}</div></div>
                       <Sparkline values={p.spark} color="var(--good)" width={64} height={26} />
                       <DeltaChip value={p.likes_24h} />
@@ -187,6 +188,7 @@ export default function OverviewPage() {
                 {top.map((p, i) => (
                   <Link href={`/post?id=${p.id}`} className="list-item" key={p.id}>
                     <span className="rank">{i + 1}</span>
+                    <Thumb src={p.thumbnail} platform={p.platform} size={34} />
                     <div className="grow"><div className="t">{postTitle(p)}</div><div className="muted small">{PLATFORM_LABEL[p.platform]} · {pct(engagement(p), 1)} engagement</div></div>
                     <div style={{ fontWeight: 700, textAlign: "right" }}>{fmt(p.views ?? p.likes)}<div className="muted small" style={{ fontWeight: 400 }}>{p.views ? "views" : "likes"}</div></div>
                   </Link>
@@ -200,7 +202,7 @@ export default function OverviewPage() {
                 <div className="list">
                   {needsAttention.slice(0, 5).map((p) => (
                     <Link href={`/post?id=${p.id}`} className="list-item" key={p.id}>
-                      <PlatformMark platform={p.platform} size={26} />
+                      <Thumb src={p.thumbnail} platform={p.platform} size={30} />
                       <div className="grow"><div className="t">{postTitle(p)}</div><div className="small" style={{ color: "var(--warn)" }}>{p.last_error ? p.last_error.slice(0, 70) : `no new data since ${ago(p.last_taken_at)}`}</div></div>
                     </Link>
                   ))}

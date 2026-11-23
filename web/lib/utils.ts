@@ -61,6 +61,26 @@ export const INTERVALS = [15, 30, 60, 180, 360, 720, 1440];
 export const intervalLabel = (m: number) =>
   m < 60 ? `${m} min` : m % 1440 === 0 ? `${m / 1440} day${m / 1440 > 1 ? "s" : ""}` : `${m / 60} hour${m / 60 > 1 ? "s" : ""}`;
 
+/** Copy text without ever hanging: the async clipboard API can wait forever on a permission prompt, so give it
+ *  1.5 s and fall back to the old execCommand route. Resolves true when the text was copied. */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    const ok = await Promise.race([
+      navigator.clipboard?.writeText(text).then(() => true, () => false) ?? Promise.resolve(false),
+      new Promise<boolean>((r) => setTimeout(() => r(false), 1500)),
+    ]);
+    if (ok) return true;
+  } catch { /* fall through */ }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  } catch { return false; }
+}
+
 export const PLATFORM_COLOR: Record<string, string> = { instagram: "#d62976", youtube: "#ff0033", twitter: "#475569" };
 
 /** (likes + comments) / views, in percent. Null when views are unknown. */

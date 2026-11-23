@@ -4,7 +4,7 @@ import { JWT } from "google-auth-library";
 const API = "https://sheets.googleapis.com/v4/spreadsheets";
 
 export const TABS: Record<string, string[]> = {
-  st_posts: ["id", "platform", "url", "external_id", "title", "author", "campaign", "added_by", "active", "last_error", "created_at", "interval_min"],
+  st_posts: ["id", "platform", "url", "external_id", "title", "author", "campaign", "added_by", "active", "last_error", "created_at", "interval_min", "thumbnail"],
   st_snapshots: ["post_id", "taken_at", "likes", "comments", "views", "shares"],
   st_summary: ["post_id", "last_taken_at", "likes", "comments", "views", "shares", "hist", "views_at"],
   st_accounts: ["id", "platform", "handle", "active", "last_error", "created_at"],

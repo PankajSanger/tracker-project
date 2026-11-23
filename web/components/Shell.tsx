@@ -21,10 +21,11 @@ const NAV: [string, string, string][] = [
   ["/posts", "Posts", "list"],
   ["/compare", "Compare", "bars"],
   ["/accounts", "Accounts", "users"],
+  ["/reports", "Reports", "report"],
   ["/alerts", "Alerts", "bell"],
   ["/settings", "Settings", "sliders"],
 ];
-const SECTIONS: [string, string[]][] = [["Analytics", ["/", "/posts", "/compare", "/accounts"]], ["Workspace", ["/alerts", "/settings"]]];
+const SECTIONS: [string, string[]][] = [["Analytics", ["/", "/posts", "/compare", "/accounts"]], ["Clients", ["/reports"]], ["Workspace", ["/alerts", "/settings"]]];
 
 export default function Shell({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -49,6 +50,9 @@ export default function Shell({ children }: { children: ReactNode }) {
   };
   const themeIcon = theme === "dark" ? "moon" : theme === "light" ? "sun" : "layers";
   const themeTitle = `Theme: ${theme} (click to change)`;
+
+  // The report page is standalone: clients open it through a share link without logging in (it checks access itself).
+  if (path === "/report") return <>{children}</>;
 
   if (!ready) return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center" }} className="muted">Loading…</div>;
 

@@ -44,6 +44,7 @@ def map_post(item: Dict[str, Any]) -> Dict[str, Any]:
         "shares": None,
         "author": item.get("ownerUsername"),
         "title": ((item.get("caption") or "").replace("\n", " ")[:80]) or None,
+        "thumbnail": item.get("displayUrl") or None,  # signed CDN link, expires after some days: refreshed on every check
     }
 
 

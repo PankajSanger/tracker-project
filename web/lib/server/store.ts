@@ -1,8 +1,8 @@
 // Data layer: Google Sheets in production, an in-memory demo when no sheet is configured.
-import { randomUUID } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
 import { DEFAULT_SETTINGS } from "../types";
-import type { Account, AccountSnap, AlertRow, NewPost, Overview, PostRow, Settings, Snapshot } from "../types";
-import { buildOverview, downsample, groupSeries, type SnapRow } from "./analytics";
+import type { Account, AccountSnap, AlertRow, NewPost, Overview, PostRow, Report, Settings, ShareLink, Snapshot } from "../types";
+import { buildOverview, buildReport, downsample, groupSeries, type SnapRow } from "./analytics";
 import * as sh from "./sheets";
 
 export interface PostPatch {
@@ -29,7 +29,25 @@ export interface Store {
   overview(days: number): Promise<Overview>;
   compare(ids: string[]): Promise<Record<string, Snapshot[]>>;
   requestCheck(ids: string[]): Promise<void>;
+  report(campaign: string | null, days: number, shared: boolean): Promise<Report>;
+  listShares(): Promise<ShareLink[]>;
+  createShare(campaign: string | null, by: string): Promise<ShareLink>;
+  revokeShare(token: string): Promise<void>;
+  getShare(token: string): Promise<ShareLink | null>;
 }
+
+/** Posts in a report: one campaign, or every post (campaign null). */
+const inCampaign = (posts: PostRow[], campaign: string | null) => (campaign === null ? posts : posts.filter((p) => (p.campaign ?? "") === campaign));
+const newToken = () => randomBytes(18).toString("base64url");
+/** YouTube thumbnails never expire and need no scraping. */
+const thumbOf = (platform: string, externalId: string, stored: string | null) =>
+  stored ?? (platform === "youtube" && externalId ? `https://i.ytimg.com/vi/${externalId}/hqdefault.jpg` : null);
+const SHARE = "share:";
+const parseShare = (key: string, value: string): ShareLink | null => {
+  if (!key.startsWith(SHARE) || !value) return null; // empty value = revoked
+  try { const v = JSON.parse(value); return { token: key.slice(SHARE.length), campaign: v.c ?? null, created_by: v.by ?? "", created_at: v.at ?? "" }; }
+  catch { return null; }
+};
 
 const n = (v: unknown): number | null => (v === "" || v === null || v === undefined || isNaN(Number(v)) ? null : Math.round(Number(v)));
 const nz = (v: string | undefined) => (v ? v : null);
@@ -91,6 +109,7 @@ const sheetsStore: Store = {
         active: truthy(p.active), last_error: nz(p.last_error), created_at: p.created_at,
         last_taken_at: nz(s?.last_taken_at), ...latest, shares: n(s?.shares), ...delta24(hist, latest), views_at: nz(s?.views_at) ?? (latest.views !== null ? nz(s?.last_taken_at) : null),
         interval_min: n(p.interval_min), spark: sparkOf(hist, 1), spark_views: sparkOf(hist, 3),
+        thumbnail: thumbOf(p.platform, p.external_id, nz(p.thumbnail)),
       };
     });
     cache = { ...cache, at: Date.now(), posts: out };
@@ -152,10 +171,24 @@ const sheetsStore: Store = {
     const now = new Date().toISOString();
     await sh.upsertKV("st_settings", Object.fromEntries(ids.map((id) => [`check_now:${id}`, now])));
   },
+  async report(campaign, days, shared) {
+    return buildReport(inCampaign(await this.listPosts(), campaign), await allSnaps(), days, campaign, shared);
+  },
+  async listShares() {
+    const rows = await sh.readTab("st_settings");
+    return rows.map((r) => parseShare(r.key, r.value)).filter((x): x is ShareLink => !!x).sort((a, b) => b.created_at.localeCompare(a.created_at));
+  },
+  async createShare(campaign, by) {
+    const link: ShareLink = { token: newToken(), campaign, created_by: by, created_at: new Date().toISOString() };
+    await sh.upsertKV("st_settings", { [SHARE + link.token]: JSON.stringify({ c: campaign, by, at: link.created_at }) });
+    return link;
+  },
+  async revokeShare(token) { await sh.upsertKV("st_settings", { [SHARE + token]: "" }); },
+  async getShare(token) { return (await this.listShares()).find((s) => s.token === token) ?? null; },
 };
 
 /* ------------------------------------------------------------ Demo (RAM) */
-type DemoDb = { posts: any[]; snaps: SnapRow[]; accounts: Account[]; accSnaps: AccountSnap[]; alerts: AlertRow[]; settings: Settings };
+type DemoDb = { posts: any[]; snaps: SnapRow[]; accounts: Account[]; accSnaps: AccountSnap[]; alerts: AlertRow[]; settings: Settings; shares: ShareLink[] };
 const g = globalThis as unknown as { __demoDb?: DemoDb };
 
 function seedDemo(): DemoDb {
@@ -200,7 +233,7 @@ function seedDemo(): DemoDb {
     { id: 2, created_at: new Date(now - 19 * 36e5).toISOString(), kind: "spike", message: `youtube spike: views 190,400 -> 251,100 (+32%) ${posts[1].url}` },
     { id: 3, created_at: new Date(now - 30 * 36e5).toISOString(), kind: "drop", message: `twitter drop: likes 3,400 -> 2,310 (-32%) ${posts[3].url}` },
   ];
-  return { posts, snaps, accounts, accSnaps, alerts, settings: { ...DEFAULT_SETTINGS } };
+  return { posts, snaps, accounts, accSnaps, alerts, settings: { ...DEFAULT_SETTINGS }, shares: [] };
 }
 const db = (): DemoDb => (g.__demoDb ??= seedDemo());
 
@@ -214,7 +247,7 @@ const demoStore: Store = {
       const l = s[s.length - 1];
       const hist = s.map((x) => [x.taken_at, x.likes, x.comments, x.views]);
       const latest = { likes: n(l?.likes), comments: n(l?.comments), views: n(l?.views) };
-      return { ...p, last_taken_at: l?.taken_at ?? null, views_at: l?.views !== null ? l?.taken_at ?? null : null, ...latest, shares: null, ...delta24(hist, latest), spark: sparkOf(hist.slice(-80), 1), spark_views: sparkOf(hist.slice(-80), 3) } as PostRow;
+      return { ...p, thumbnail: thumbOf(p.platform, p.external_id, p.thumbnail ?? null), last_taken_at: l?.taken_at ?? null, views_at: l?.views !== null ? l?.taken_at ?? null : null, ...latest, shares: null, ...delta24(hist, latest), spark: sparkOf(hist.slice(-80), 1), spark_views: sparkOf(hist.slice(-80), 3) } as PostRow;
     });
   },
   async addPosts(rows, by) {
@@ -250,6 +283,17 @@ const demoStore: Store = {
   async overview(days) { const d = db(); return buildOverview(d.snaps.filter((s) => d.posts.some((p) => p.id === s.post_id)), days); },
   async compare(ids) { return groupSeries(db().snaps, ids); },
   async requestCheck() { /* demo data is not scraped */ },
+  async report(campaign, days, shared) {
+    return buildReport(inCampaign(await this.listPosts(), campaign), db().snaps, days, campaign, shared);
+  },
+  async listShares() { return [...db().shares]; },
+  async createShare(campaign, by) {
+    const link: ShareLink = { token: newToken(), campaign, created_by: by, created_at: new Date().toISOString() };
+    db().shares.unshift(link);
+    return link;
+  },
+  async revokeShare(token) { const d = db(); d.shares = d.shares.filter((s) => s.token !== token); },
+  async getShare(token) { return db().shares.find((s) => s.token === token) ?? null; },
 };
 
 export const store: Store = sh.sheetsConfigured() ? sheetsStore : demoStore;
