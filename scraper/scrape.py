@@ -118,6 +118,7 @@ def main() -> int:
     for r in store.read("st_account_snapshots"):
         last_acc[r["account_id"]] = r["taken_at"]  # rows are chronological
     skipped = 0
+    check_now_done: list = []
     log.info("platforms=%s: tracking %d posts, %d accounts", ",".join(sorted(allowed)), len(posts), len(accounts))
 
     failures = 0
@@ -129,14 +130,20 @@ def main() -> int:
     fresh: dict = {}  # post_id -> new data this run
 
     # stalest first, so a capped/throttled run always makes progress through the whole list
-    posts.sort(key=lambda p: (prev_summary.get(p["id"]) or {}).get("last_taken_at") or "")
+    # "Check now" requests first, then the stalest posts
+    posts.sort(key=lambda p: (not settings.get(f"check_now:{p['id']}"), (prev_summary.get(p["id"]) or {}).get("last_taken_at") or ""))
     ig_done = 0
     for post in posts:
         pid = post["id"]
-        if not is_due((prev_summary.get(pid) or {}).get("last_taken_at"), interval_minutes(post, settings)):
+        last = (prev_summary.get(pid) or {}).get("last_taken_at")
+        asked = settings.get(f"check_now:{pid}") or ""
+        wanted_now = bool(asked) and (not last or asked > last)  # someone pressed "Check now" in the dashboard
+        if wanted_now:
+            check_now_done.append(f"check_now:{pid}")
+        elif not is_due(last, interval_minutes(post, settings)):
             skipped += 1
             continue
-        if "unavailable" in (post.get("last_error") or "") and not FORCE and datetime.now().hour % 12 != 0:
+        if "unavailable" in (post.get("last_error") or "") and not FORCE and not wanted_now and datetime.now().hour % 12 != 0:
             skipped += 1  # deleted/private post: re-checked only twice a day so it does not use up a run's budget
             continue
         if post["platform"] == "instagram":
@@ -230,6 +237,7 @@ def main() -> int:
     store.replace_all("st_summary", [r for pid, r in current.items() if pid in live_ids])
     store.update_cells("st_posts", post_changes)
     store.update_cells("st_accounts", acc_changes)
+    store.upsert_kv("st_settings", {k: "" for k in check_now_done})  # clear the handled "Check now" requests
 
     log.info("Done. snapshots=%d account_snapshots=%d alerts=%d failures=%d not-due-yet=%d",
              len(new_snaps), len(new_acc_snaps), len(new_alerts), failures, skipped)

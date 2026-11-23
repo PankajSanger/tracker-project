@@ -76,6 +76,23 @@ export default function PostsPage() {
     } catch (e) { show(e instanceof Error ? e.message : "Could not add posts"); }
   }
 
+  async function removePosts(ids: string[]) {
+    if (!ids.length || !confirm(`Delete ${ids.length} post${ids.length > 1 ? "s" : ""} from the tracker? Their history stays in the Google Sheet.`)) return;
+    try {
+      for (const id of ids) await api.deletePost(id);
+      show(`Deleted ${ids.length} post(s)`);
+      setSel(new Set());
+      reload();
+    } catch (e) { show(e instanceof Error ? e.message : "Delete failed"); }
+  }
+
+  async function checkNow(ids: string[]) {
+    try {
+      for (const id of ids) await api.checkNow(id);
+      show(`Queued ${ids.length} post(s) - fresh numbers within about 5 minutes.`);
+    } catch (e) { show(e instanceof Error ? e.message : "Could not queue"); }
+  }
+
   async function bulk(patch: { active?: boolean; campaign?: string | null }) {
     const ids = Array.from(sel);
     try {
@@ -167,6 +184,7 @@ export default function PostsPage() {
                   <th className="c">Trend</th>
                   <th className={sort === "recent" ? "sorted" : ""} onClick={() => setSort("recent")}>Updated</th>
                   <th className="c" style={{ width: 40 }} />
+                  <th className="c" style={{ width: 84 }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -197,6 +215,10 @@ export default function PostsPage() {
                     <td className="c"><Sparkline values={p.spark} color={(p.likes_24h ?? 0) >= 0 ? "var(--good)" : "var(--bad)"} width={86} height={28} /></td>
                     <td className="muted">{ago(p.last_taken_at)}</td>
                     <td className="c">{statusDot(p)}</td>
+                    <td className="c" style={{ whiteSpace: "nowrap" }}>
+                      <button className="btn icon ghost sm" title="Check now" onClick={() => checkNow([p.id])}><Icon name="refresh" size={14} /></button>
+                      <button className="btn icon ghost sm danger" title="Delete" onClick={() => removePosts([p.id])}><Icon name="trash" size={14} /></button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -211,6 +233,7 @@ export default function PostsPage() {
                 <PlatformMark platform={p.platform} size={28} />
                 <span className="muted small" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.author ?? PLATFORM_LABEL[p.platform]}</span>
                 {statusDot(p)}
+                <button className="btn icon ghost sm danger" title="Delete" onClick={(e) => { e.stopPropagation(); removePosts([p.id]); }}><Icon name="trash" size={13} /></button>
                 <input type="checkbox" checked={sel.has(p.id)} onClick={(e) => e.stopPropagation()} onChange={() => toggle(p.id)} aria-label="Select" />
               </div>
               <div className="title">{postTitle(p)}</div>
@@ -238,6 +261,8 @@ export default function PostsPage() {
           <button className="btn sm" disabled={!bulkCampaign.trim()} onClick={() => bulk({ campaign: bulkCampaign })}>Apply</button>
           <button className="btn sm" onClick={() => bulk({ active: false })}><Icon name="pause" size={13} /> Pause</button>
           <button className="btn sm" onClick={() => bulk({ active: true })}><Icon name="play" size={13} /> Resume</button>
+          <button className="btn sm" onClick={() => checkNow(Array.from(sel))}><Icon name="refresh" size={13} /> Check now</button>
+          <button className="btn sm" onClick={() => removePosts(Array.from(sel))}><Icon name="trash" size={13} /> Delete</button>
           <button className="btn sm" onClick={() => setSel(new Set())}><Icon name="x" size={13} /></button>
         </div>
       )}

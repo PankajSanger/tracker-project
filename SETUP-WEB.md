@@ -60,8 +60,9 @@ Without `SPREADSHEET_ID` the site runs in **demo mode** on sample data (any logi
 - A teammate adds posts by pasting URLs; the first numbers appear after the next run (or run **scrape** from the Actions tab for instant data).
 
 ## Tracking intervals (dashboard -> Settings)
-Choose how often each platform is checked (15 minutes to 7 days) and override it per post on the post's page. The runner wakes every 30 minutes and each post is
-only fetched when it is **due**, so the real minimum is 30 minutes. Defaults: 1 hour for YouTube and X, 3 hours for Instagram. Alert thresholds (spike/drop %) are set there too.
+Choose how often each platform is checked (15 minutes to 7 days) and override it per post on the post's page. The PC checks every 5 minutes for posts that are
+**due**, so a 15-minute interval really is ~15 minutes (while the PC is on). **Check now** (post page, table row, or bulk) refreshes a post on the next run, within ~5 minutes.
+**Delete** is on the post page header, on every table row, and in the bulk bar (history stays in the sheet). Defaults: 1 hour for YouTube and X, 3 hours for Instagram. Alert thresholds (spike/drop %) are set there too.
 
 ## Features
 - Overview with KPI cards + sparklines, growth chart (24h/7d/30d/all), platform split, fastest growing / top performing / needs attention

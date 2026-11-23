@@ -123,7 +123,13 @@ function PostDetail() {
             <span className={`chip ${post.active ? (post.last_error ? "warn" : "up") : ""}`}>{post.active ? (post.last_error ? "needs attention" : "tracking") : "paused"}</span>
           </div>
         </div>
+        <button className="btn" onClick={async () => { try { await api.checkNow(post.id); show("Queued - fresh numbers within about 5 minutes."); } catch (e) { show(e instanceof Error ? e.message : "Could not queue"); } }}><Icon name="refresh" size={15} /> Check now</button>
         <a href={post.url} target="_blank" rel="noreferrer" className="btn"><Icon name="external" size={15} /> Open post</a>
+        <button className="btn danger" title="Delete this post" onClick={async () => {
+          if (!confirm("Delete this post from the tracker? Its history stays in the Google Sheet but the dashboard will no longer show it.")) return;
+          await api.deletePost(post.id);
+          router.push("/posts");
+        }}><Icon name="trash" size={15} /> Delete</button>
       </div>
 
       {post.last_error && <div className="banner"><Icon name="alert" /> Last check failed: {post.last_error}</div>}

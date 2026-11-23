@@ -31,6 +31,7 @@ export const api = {
   post: (id: string) => j<{ post: PostRow; snapshots: Snapshot[] }>(`/api/posts/${id}`),
   updatePost: (id: string, patch: { campaign?: string | null; active?: boolean; interval_min?: number | null }) => j(`/api/posts/${id}`, send("PATCH", patch)),
   deletePost: (id: string) => j(`/api/posts/${id}`, send("DELETE")),
+  checkNow: (id: string) => j(`/api/posts/${id}`, send("PATCH", { check_now: true })),
   accounts: () => j<{ accounts: Account[]; snaps: AccountSnap[] }>("/api/accounts"),
   addAccount: (platform: string, handle: string) => j("/api/accounts", send("POST", { platform, handle })),
   deleteAccount: (id: string) => j(`/api/accounts/${id}`, send("DELETE")),

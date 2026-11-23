@@ -14,6 +14,10 @@ export const GET = authed(async (_user, _req: Request, { params }: Ctx) => {
 
 export const PATCH = authed(async (_user, req: Request, { params }: Ctx) => {
   const b = await req.json().catch(() => ({}));
+  if (b.check_now) {
+    await store.requestCheck([params.id]);
+    return NextResponse.json({ ok: true, queued: true });
+  }
   const patch: { campaign?: string | null; active?: boolean; interval_min?: number | null } = {};
   if ("campaign" in b) patch.campaign = String(b.campaign ?? "").trim().slice(0, 60) || null;
   if ("active" in b) patch.active = !!b.active;

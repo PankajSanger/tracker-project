@@ -28,6 +28,7 @@ export interface Store {
   setSettings(patch: Partial<Settings>): Promise<Settings>;
   overview(days: number): Promise<Overview>;
   compare(ids: string[]): Promise<Record<string, Snapshot[]>>;
+  requestCheck(ids: string[]): Promise<void>;
 }
 
 const n = (v: unknown): number | null => (v === "" || v === null || v === undefined || isNaN(Number(v)) ? null : Math.round(Number(v)));
@@ -146,6 +147,10 @@ const sheetsStore: Store = {
   },
   async overview(days) { return buildOverview(await allSnaps(), days); },
   async compare(ids) { return groupSeries(await allSnaps(), ids); },
+  async requestCheck(ids) {
+    const now = new Date().toISOString();
+    await sh.upsertKV("st_settings", Object.fromEntries(ids.map((id) => [`check_now:${id}`, now])));
+  },
 };
 
 /* ------------------------------------------------------------ Demo (RAM) */
@@ -243,6 +248,7 @@ const demoStore: Store = {
   async setSettings(patch) { db().settings = { ...db().settings, ...cleanSettings(patch) }; return { ...db().settings }; },
   async overview(days) { const d = db(); return buildOverview(d.snaps.filter((s) => d.posts.some((p) => p.id === s.post_id)), days); },
   async compare(ids) { return groupSeries(db().snaps, ids); },
+  async requestCheck() { /* demo data is not scraped */ },
 };
 
 export const store: Store = sh.sheetsConfigured() ? sheetsStore : demoStore;

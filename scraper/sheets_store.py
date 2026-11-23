@@ -126,3 +126,19 @@ class SheetsStore:
         if rows:
             values = [[("" if r.get(h) is None else r.get(h)) for h in header] for r in rows]
             self._req("PUT", f"{API}/{self.sid}/values/{tab}!A2?valueInputOption=RAW", json={"values": values})
+
+    def upsert_kv(self, tab: str, kv: Dict[str, Any]) -> None:
+        """Set key/value rows (column A = key, B = value), updating existing keys in place."""
+        if not kv:
+            return
+        rows = self._req("GET", f"{API}/{self.sid}/values/{tab}!A2:B").get("values", [])
+        row_of = {r[0]: i + 2 for i, r in enumerate(rows) if r}
+        data, fresh = [], []
+        for k, v in kv.items():
+            if k in row_of:
+                data.append({"range": f"{tab}!B{row_of[k]}", "values": [["" if v is None else v]]})
+            else:
+                fresh.append({"key": k, "value": "" if v is None else v})
+        if data:
+            self._req("POST", f"{API}/{self.sid}/values:batchUpdate", json={"valueInputOption": "RAW", "data": data})
+        self.append(tab, fresh)

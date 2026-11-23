@@ -8,9 +8,9 @@ import { Icon, PlatformMark, Skeleton, useToast } from "@/components/ui";
 import { useSession } from "@/components/Shell";
 
 const ROWS: { pf: Platform; key: keyof Settings; runner: string }[] = [
-  { pf: "instagram", key: "interval_instagram", runner: "Selenium + Beautiful Soup, checked on GitHub every 30 minutes (views and shares are not public on Instagram)" },
-  { pf: "youtube", key: "interval_youtube", runner: "Selenium + Beautiful Soup, checked on GitHub every 30 minutes" },
-  { pf: "twitter", key: "interval_twitter", runner: "Selenium + Beautiful Soup, checked on GitHub every 30 minutes" },
+  { pf: "instagram", key: "interval_instagram", runner: "Selenium + Beautiful Soup; views come from the creator's reels grid (recent reels)" },
+  { pf: "youtube", key: "interval_youtube", runner: "Selenium + Beautiful Soup" },
+  { pf: "twitter", key: "interval_twitter", runner: "Selenium + Beautiful Soup" },
 ];
 
 export default function SettingsPage() {
@@ -61,7 +61,7 @@ export default function SettingsPage() {
               </div>
             ))}
           </div>
-          <div className="muted small" style={{ marginTop: 12 }}>The fastest possible interval is how often the runners themselves run (every 30 minutes on GitHub).</div>
+          <div className="muted small" style={{ marginTop: 12 }}>The fastest possible interval is how often the runners themselves run (your PC checks for due posts every 5 minutes; GitHub every 30 minutes as a backup). Use "Check now" on a post for an immediate refresh.</div>
         </div>
 
         <div className="card">
