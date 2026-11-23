@@ -8,7 +8,8 @@ GitHub Actions (+ your PC)  --scrapes-->  Google Sheet (st_* tabs)  <--API route
 - **Website** (Vercel) reads/writes the sheet through server-side API routes using a service account. The key never reaches the browser.
 - **Collecting the numbers** (Python, `scraper/`):
   - **Everything is scraped with Selenium (headless Chrome) + Beautiful Soup.** No official APIs, no API keys, no logins, no accounts at risk, all free.
-  - **Main scheduler: a PC** (Windows Task Scheduler runs `scraperun_scrape.bat` every 30 minutes; GitHub's free schedule only fires every few hours in practice). **Backup: GitHub Actions** (posts only, every 30 minutes when it fires).
+  - **Main scheduler: a PC** (Windows Task Scheduler runs `scraper
+un_scrape.bat` every 30 minutes; GitHub's free schedule only fires every few hours in practice). **Backup: GitHub Actions** (posts only, every 30 minutes when it fires).
 
 ## 1. The spreadsheet
 Use your existing `tracking` spreadsheet or a new one. The app only creates and touches its own tabs, named `st_posts`, `st_snapshots`,
@@ -26,7 +27,7 @@ Capacity: a Google Sheet holds 10 million cells. One snapshot = 6 cells, so 100 
 | **X** | likes, replies, reposts (views on newer posts) | followers, following, posts (rounded by X, e.g. 92.1M) |
 | **Instagram** | exact likes, comments, creator, caption; exact views for reels among the creator's recent reels | exact followers, following, posts |
 
-Instagram shows **views** only in a creator's reels grid, and only for their recent reels: about 12 for a logged-out visitor, about 37 after logging in the scraper's own Chrome profile once (`cd scraper`, `..env\Scripts\python.exe ig_login.py`; use a secondary account). For older reels the dashboard keeps the last views it saw and marks them "last seen ..." (`*` in the table). Image posts have no views, and **shares** are never shown on the web.
+Instagram shows **views** only in a creator's reels grid, and only for their recent reels: about 12 for a logged-out visitor, about 37 after logging in the scraper's own Chrome profile once (`cd scraper`, `..\venv\Scripts\python.exe ig_login.py`; use a secondary account). For older reels the dashboard keeps the last views it saw and marks them "last seen ..." (`*` in the table). Image posts have no views, and **shares** are never shown on the web.
 Offline tests of the parsers: `cd scraper`, `..\venv\Scripts\python.exe -m unittest test_instagram_parse test_scrape_logic`.
 
 ## 3. GitHub (runs the scraper every 30 minutes - free)
