@@ -71,7 +71,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  interval_instagram: 60,
+  interval_instagram: 180,
   interval_twitter: 60,
   interval_youtube: 60,
   alert_spike_pct: 25,

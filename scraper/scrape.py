@@ -40,7 +40,7 @@ log = logging.getLogger("scrape")
 SPIKE_PCT = float(os.getenv("ALERT_SPIKE_PCT", "25"))  # % change between runs
 SPIKE_MIN = int(os.getenv("ALERT_SPIKE_MIN", "50"))    # ...and at least this many
 spike_pct, spike_min = SPIKE_PCT, SPIKE_MIN            # overridden by the dashboard settings in main()
-DEFAULT_INTERVAL = {"instagram": 60, "twitter": 60, "youtube": 60}  # minutes; changeable in the dashboard
+DEFAULT_INTERVAL = {"instagram": 180, "twitter": 60, "youtube": 60}  # minutes; changeable in the dashboard
 FORCE = os.getenv("FORCE") == "1"                      # manual runs ignore the interval
 HIST_HOURS = 60                                        # recent points kept per post for 24h deltas
 MAX_RETRIES = 2
@@ -172,7 +172,7 @@ def main() -> int:
             failures += 1
             log.error("FAIL %s %s: %s", post["platform"], post["external_id"], exc)
             post_changes[pid] = {"last_error": str(exc)[:300]}
-        time.sleep(0.2 if post["platform"] == "instagram" else random.uniform(0.5, 1.5))
+        time.sleep(random.uniform(3, 6) if post["platform"] == "instagram" else random.uniform(0.5, 1.5))
 
     for acc in accounts:
         if not is_due(last_acc.get(acc["id"]), interval_minutes(acc, settings)):

@@ -1,35 +1,28 @@
-"""Instagram metrics via the official Instagram Graph API (Meta). No scraping, no login session.
+"""Instagram metrics via Selenium (headless Chrome) + Beautiful Soup. No login, no API, no account at risk.
 
-Needs an Instagram *Business or Creator* account linked to a Facebook Page, and a Meta app:
-    IG_GRAPH_TOKEN      long-lived access token (permissions: instagram_basic, pages_show_list,
-                        pages_read_engagement, instagram_manage_insights)
-    IG_USER_ID          the Instagram Business Account id that owns the token
-    GRAPH_API_VERSION   optional, default v23.0
-
-What the API can return, by whose post it is:
-  * your OWN account's posts:   likes, comments, plus insights (views, shares, reach, saves)
-  * OTHER business/creator accounts' public posts (Business Discovery): likes and comments only,
-    found by scanning that account's recent media (up to 500 posts) for the post's shortcode.
-Personal (non business/creator) accounts cannot be read through the Graph API at all.
+A logged-out visitor can load any public post or profile page, and the page's own data contains:
+  post:     exact likes and comments (from the embedded JSON), creator, caption   (cross-checked with the
+            public `og:description` summary, e.g. "79K likes, 355 comments - user on August 1, 2026: ...")
+  profile:  exact followers (embedded JSON), following and posts (`og:description`)
+Instagram only gives view counts and shares to logged-in sessions, so those stay empty (shown as "-").
 """
-import os
 import re
+import time
 from typing import Any, Dict, Optional
 
-import requests
+from bs4 import BeautifulSoup
+
+import browser
 
 _URL_RE = re.compile(r"instagram\.com/(?:[\w.]+/)?(?:p|reel|tv|reels)/([A-Za-z0-9_\-]+)")
-MEDIA_FIELDS = "id,shortcode,permalink,like_count,comments_count,media_type,media_product_type,timestamp,caption,username"
-MAX_PAGES = 10          # business discovery: pages of 50 posts scanned per account
-RATE_CODES = {4, 17, 32, 613, 80001, 80002, 80003, 80004, 80005, 80006}
 
 
 class AuthError(Exception):
-    """Token missing, expired or lacking permissions - needs a human to fix it."""
+    """Kept for compatibility with scrape.py; Instagram scraping needs no login so this is not raised."""
 
 
 class RateLimited(Exception):
-    """Meta says slow down. Stop sending requests for this run."""
+    """Instagram sent the browser to its login page (this IP is being throttled). Stop for this run."""
 
 
 def parse_url(url: str) -> Optional[str]:
@@ -37,172 +30,123 @@ def parse_url(url: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
-# ------------------------------------------------------------------ plumbing
-def _creds() -> tuple:
-    token, uid = os.environ.get("IG_GRAPH_TOKEN"), os.environ.get("IG_USER_ID")
-    if not token or not uid:
-        raise AuthError("IG_GRAPH_TOKEN and IG_USER_ID are not set")
-    return token, uid
+# ----------------------------------------------------------------- parsing helpers (pure functions)
+def _abbr(text: Optional[str]) -> Optional[int]:
+    """'1,931' -> 1931, '79K' -> 79000, '2M' -> 2000000."""
+    v = _abbr_tol(text)
+    return v[0] if v else None
 
 
-def _get(path: str, **params: Any) -> Dict[str, Any]:
-    token, _ = _creds()
-    ver = os.environ.get("GRAPH_API_VERSION", "v23.0")
-    r = requests.get(f"https://graph.facebook.com/{ver}/{path.lstrip('/')}", params={**params, "access_token": token}, timeout=30)
-    try:
-        data = r.json()
-    except ValueError:
-        raise RuntimeError(f"Graph API returned non-JSON (HTTP {r.status_code})")
-    err = data.get("error") if isinstance(data, dict) else None
-    if err:
-        code, sub, msg = err.get("code"), err.get("error_subcode"), err.get("message", "")
-        if code in RATE_CODES:
-            raise RateLimited(f"Instagram Graph API rate limit (code {code}): {msg[:120]}")
-        if code == 190 or code in (10, 200, 299):
-            raise AuthError(f"Instagram Graph token problem (code {code}): {msg[:160]}")
-        raise RuntimeError(f"Graph API error {code}{'/' + str(sub) if sub else ''}: {msg[:200]}")
-    if r.status_code >= 400:
-        raise RuntimeError(f"Graph API HTTP {r.status_code}")
-    return data
-
-
-# ------------------------------------------------------------------ own account
-_own: Optional[Dict[str, Dict[str, Any]]] = None
-_own_username: Optional[str] = None
-
-
-def _own_media() -> Dict[str, Dict[str, Any]]:
-    """shortcode -> media, for the connected account (cached for the run)."""
-    global _own, _own_username
-    if _own is not None:
-        return _own
-    _, uid = _creds()
-    out: Dict[str, Dict[str, Any]] = {}
-    me = _get(uid, fields="username")
-    _own_username = (me.get("username") or "").lower()
-    data = _get(f"{uid}/media", fields=MEDIA_FIELDS, limit=100)
-    for _ in range(20):
-        for m in data.get("data", []):
-            code = m.get("shortcode") or parse_url(m.get("permalink", "") or "")
-            if code:
-                out[code] = m
-        nxt = (data.get("paging") or {}).get("cursors", {}).get("after")
-        if not nxt or not data.get("data"):
-            break
-        data = _get(f"{uid}/media", fields=MEDIA_FIELDS, limit=100, after=nxt)
-    _own = out
-    return out
-
-
-def _insights(media: Dict[str, Any]) -> Dict[str, Optional[int]]:
-    """views / shares / reach / saves for one of your own posts. Metrics differ by post type, so try sets."""
-    for metrics in ("views,shares,reach,saved", "views,reach", "plays,shares,reach,saved", "impressions,reach"):
-        try:
-            data = _get(f"{media['id']}/insights", metric=metrics)
-        except RuntimeError:
-            continue
-        out: Dict[str, Optional[int]] = {}
-        for item in data.get("data", []):
-            vals = item.get("values") or [{}]
-            out[item.get("name", "")] = vals[0].get("value")
-        views = out.get("views") if out.get("views") is not None else out.get("plays", out.get("impressions"))
-        return {"views": views, "shares": out.get("shares"), "reach": out.get("reach"), "saves": out.get("saved")}
-    return {"views": None, "shares": None, "reach": None, "saves": None}
-
-
-# ------------------------------------------------------------ other accounts
-_discovery: Dict[str, Dict[str, Any]] = {}
-
-
-def _business_discovery(username: str, find: Optional[str] = None) -> Dict[str, Any]:
-    """Public data of another business/creator account. Scans its media for shortcode `find`."""
-    _, uid = _creds()
-    u = username.lstrip("@").lower()
-    cache = _discovery.setdefault(u, {"media": {}, "profile": None, "done": False, "after": None, "pages": 0})
-    while True:
-        if find and find in cache["media"]:
-            return cache
-        if cache["done"] and cache["profile"] is not None:
-            return cache
-        media_part = f"media.limit(50){{{MEDIA_FIELDS}}}" if not cache["after"] else f"media.after({cache['after']}).limit(50){{{MEDIA_FIELDS}}}"
-        fields = f"business_discovery.username({u}){{username,followers_count,follows_count,media_count,{media_part}}}"
-        try:
-            data = _get(uid, fields=fields)
-        except RuntimeError as exc:
-            text = str(exc).lower()
-            if any(k in text for k in ("cannot find", "does not exist", "business or creator", "unsupported", "invalid user")):
-                raise RuntimeError(f"@{u} is not readable through the Graph API (it must be a public Business or Creator account)")
-            raise
-        bd = data.get("business_discovery") or {}
-        if cache["profile"] is None:
-            cache["profile"] = {"followers": bd.get("followers_count"), "following": bd.get("follows_count"), "posts_count": bd.get("media_count")}
-        media = bd.get("media") or {}
-        for m in media.get("data", []):
-            code = m.get("shortcode") or parse_url(m.get("permalink", "") or "")
-            if code:
-                cache["media"][code] = m
-        cache["after"] = (media.get("paging") or {}).get("cursors", {}).get("after")
-        cache["pages"] += 1
-        if not cache["after"] or not media.get("data") or cache["pages"] >= MAX_PAGES:
-            cache["done"] = True
-        if not find:
-            return cache
-
-
-def _username_for(shortcode: str, post: Optional[dict]) -> Optional[str]:
-    name = ((post or {}).get("author") or "").strip().lstrip("@")
-    if name:
-        return name
-    url = (post or {}).get("url") or f"https://www.instagram.com/p/{shortcode}/"
-    try:  # oEmbed tells us who owns a public post
-        return _get("instagram_oembed", url=url, fields="author_name").get("author_name")
-    except RuntimeError:
+def _abbr_tol(text: Optional[str]):
+    """Like _abbr but also returns how coarse the rounding is: '2M' -> (2000000, 500000), '79K' -> (79000, 500), '1,931' -> (1931, 0)."""
+    if not text:
         return None
-
-
-# ------------------------------------------------------------------- public API
-def fetch_post(shortcode: str, post: Optional[dict] = None) -> Dict[str, Any]:
-    own = _own_media().get(shortcode)
-    if own:
-        ins = _insights(own)
-        return {
-            "likes": own.get("like_count"),
-            "comments": own.get("comments_count"),
-            "views": ins["views"],
-            "shares": ins["shares"],
-            "author": own.get("username") or _own_username,
-            "title": (own.get("caption") or "")[:80] or None,
-        }
-
-    username = _username_for(shortcode, post)
-    if not username:
-        raise RuntimeError("cannot tell which account owns this post - set the creator name for it, or connect the owner's account")
-    cache = _business_discovery(username, find=shortcode)
-    m = cache["media"].get(shortcode)
+    m = re.search(r"([\d][\d.,]*)\s*([KMB]?)", text.strip(), re.I)
     if not m:
-        raise RuntimeError(f"post not found in @{username}'s recent {MAX_PAGES * 50} posts (deleted, too old, or the account is not a Business/Creator account)")
+        return None
+    suffix = m.group(2).upper()
+    mult = {"": 1, "K": 1e3, "M": 1e6, "B": 1e9}[suffix]
+    num = m.group(1).replace(",", "") if not suffix else m.group(1).replace(",", "")
+    try:
+        value = int(round(float(num) * mult))
+    except ValueError:
+        return None
+    if not suffix:
+        return value, 0
+    decimals = len(num.split(".")[1]) if "." in num else 0
+    return value, int(mult * (10 ** -decimals) / 2) + 1
+
+
+def _pick_exact(approx, candidates: list) -> Optional[int]:
+    """The page summary is rounded ("79K", "2M"); choose the exact number from the embedded JSON that agrees with it."""
+    value, tol = approx if approx else (None, 0)
+    if not candidates:
+        return value
+    if value is None:
+        return candidates[0]
+    for c in candidates:
+        if abs(c - value) <= tol + value * 0.005:
+            return c
+    return value
+
+
+def _og(soup: BeautifulSoup, prop: str = "og:description") -> Optional[str]:
+    tag = soup.find("meta", property=prop)
+    return tag.get("content") if tag and tag.get("content") else None
+
+
+def _script_numbers(soup: BeautifulSoup, key: str) -> list:
+    text = "\n".join(s.string for s in soup.find_all("script") if s.string and key in s.string)
+    return [int(x) for x in re.findall(rf'"{key}"\s*:\s*(\d+)', text)]
+
+
+def parse_post(soup: BeautifulSoup) -> Optional[Dict[str, Any]]:
+    """Return the post's numbers, or None when the page holds no post data (deleted / private / blocked)."""
+    og = _og(soup)
+    if not og and not _script_numbers(soup, "like_count"):
+        return None
+    likes_t = re.search(r"([\d][\d.,]*\s*[KMB]?)\s+likes?\b", og or "", re.I)
+    comm_t = re.search(r"([\d][\d.,]*\s*[KMB]?)\s+comments?\b", og or "", re.I)
+    author = re.search(r"-\s+(\S+)\s+on\s", og or "")
+    caption = re.search(r'on [^:]+:\s*["“](.*)["”]\.?\s*$', og or "", re.S)
+
+    hidden = bool(re.search(r'"like_and_view_counts_disabled"\s*:\s*true', "\n".join(s.string or "" for s in soup.find_all("script") if s.string and "like_and_view" in s.string)))
+    likes = None if hidden else _pick_exact(_abbr_tol(likes_t.group(1)) if likes_t else None, _script_numbers(soup, "like_count"))
+    comments = _pick_exact(_abbr_tol(comm_t.group(1)) if comm_t else None, _script_numbers(soup, "comment_count"))
     return {
-        "likes": m.get("like_count"),
-        "comments": m.get("comments_count"),
-        "views": None,   # the Graph API does not expose other accounts' view counts
+        "likes": likes,
+        "comments": comments,
+        "views": None,   # logged-out pages do not expose view counts
         "shares": None,
-        "author": m.get("username") or username,
-        "title": (m.get("caption") or "")[:80] or None,
+        "author": author.group(1) if author else None,
+        "title": (caption.group(1).strip().replace("\n", " ")[:80] if caption else None) or None,
     }
 
 
+def parse_profile(soup: BeautifulSoup) -> Optional[Dict[str, Any]]:
+    og = _og(soup)
+    if not og:
+        return None
+    fol = re.search(r"([\d][\d.,]*\s*[KMB]?)\s+Followers", og, re.I)
+    fng = re.search(r"([\d][\d.,]*\s*[KMB]?)\s+Following", og, re.I)
+    pst = re.search(r"([\d][\d.,]*\s*[KMB]?)\s+Posts", og, re.I)
+    if not fol:
+        return None
+    return {
+        "followers": _pick_exact(_abbr_tol(fol.group(1)), _script_numbers(soup, "follower_count")),
+        "following": _abbr(fng.group(1)) if fng else None,
+        "posts_count": _abbr(pst.group(1)) if pst else None,
+    }
+
+
+# ------------------------------------------------------------------------------- browser part
+def _load(url: str, ready) -> BeautifulSoup:
+    driver = browser.get_driver()
+    driver.get(url)
+    if "/accounts/login" in driver.current_url:
+        raise RateLimited("Instagram redirected to its login page (this IP is being throttled) - will retry next run")
+    soup = browser.wait_for(driver, ready, timeout=14, poll=0.8)
+    if "/accounts/login" in driver.current_url:
+        raise RateLimited("Instagram redirected to its login page (this IP is being throttled) - will retry next run")
+    return soup
+
+
+def fetch_post(shortcode: str, post: Optional[dict] = None) -> Dict[str, Any]:
+    def ready(s: BeautifulSoup) -> bool:
+        return bool(_script_numbers(s, "like_count")) or "isn't available" in s.get_text(" ")[:2500] or "isn’t available" in s.get_text(" ")[:2500]
+
+    soup = _load(f"https://www.instagram.com/p/{shortcode}/", ready)
+    data = parse_post(soup)
+    if data is None or (data["likes"] is None and data["comments"] is None and not _og(soup)):
+        raise RuntimeError("post unavailable (deleted, private, or Instagram showed a block page)")
+    time.sleep(0.5)
+    return data
+
+
 def fetch_profile(handle: str) -> Dict[str, Any]:
-    _, uid = _creds()
-    own = _get(uid, fields="username,followers_count,follows_count,media_count")
-    if (own.get("username") or "").lower() == handle.lstrip("@").lower():
-        return {"followers": own.get("followers_count"), "following": own.get("follows_count"), "posts_count": own.get("media_count")}
-    prof = _business_discovery(handle)["profile"] or {}
-    if prof.get("followers") is None:
-        raise RuntimeError(f"@{handle} is not readable through the Graph API (it must be a public Business or Creator account)")
-    return prof
-
-
-def reset_cache() -> None:  # used by tests
-    global _own, _own_username
-    _own, _own_username = None, None
-    _discovery.clear()
+    handle = handle.lstrip("@")
+    soup = _load(f"https://www.instagram.com/{handle}/", lambda s: bool(_og(s)) or "isn't available" in s.get_text(" ")[:2500] or "isn’t available" in s.get_text(" ")[:2500])
+    data = parse_profile(soup)
+    if data is None:
+        raise RuntimeError("profile unavailable (not found, private or blocked page)")
+    return data

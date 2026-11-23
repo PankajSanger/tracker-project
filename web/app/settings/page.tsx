@@ -8,7 +8,7 @@ import { Icon, PlatformMark, Skeleton, useToast } from "@/components/ui";
 import { useSession } from "@/components/Shell";
 
 const ROWS: { pf: Platform; key: keyof Settings; runner: string }[] = [
-  { pf: "instagram", key: "interval_instagram", runner: "Official Instagram Graph API, checked on GitHub every 30 minutes" },
+  { pf: "instagram", key: "interval_instagram", runner: "Selenium + Beautiful Soup, checked on GitHub every 30 minutes (views and shares are not public on Instagram)" },
   { pf: "youtube", key: "interval_youtube", runner: "Selenium + Beautiful Soup, checked on GitHub every 30 minutes" },
   { pf: "twitter", key: "interval_twitter", runner: "Selenium + Beautiful Soup, checked on GitHub every 30 minutes" },
 ];

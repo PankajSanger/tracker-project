@@ -8,6 +8,7 @@ import sys
 import time
 
 import browser
+import instagram
 import twitter
 import youtube
 
@@ -18,6 +19,8 @@ CHECKS = [
     ("YouTube channel", lambda: youtube.fetch_profile("NASA")),
     ("X post", lambda: twitter.fetch_post("20", {"url": "https://x.com/jack/status/20"})),
     ("X profile", lambda: twitter.fetch_profile("NASA")),
+    ("Instagram post", lambda: instagram.fetch_post("DbVW05gk_1i")),
+    ("Instagram profile", lambda: instagram.fetch_profile("instagram")),
 ]
 
 
@@ -26,10 +29,10 @@ def main() -> int:
     for name, fn in CHECKS:
         t = time.time()
         try:
-            print(f"OK   {name:16} {fn()}  ({time.time() - t:.0f}s)")
+            print(f"OK   {name:18} {fn()}  ({time.time() - t:.0f}s)")
         except Exception as exc:  # noqa: BLE001
             failed += 1
-            print(f"FAIL {name:16} {type(exc).__name__}: {str(exc)[:200]}  ({time.time() - t:.0f}s)")
+            print(f"FAIL {name:18} {type(exc).__name__}: {str(exc)[:200]}  ({time.time() - t:.0f}s)")
     browser.close()
     print(f"\n{len(CHECKS) - failed}/{len(CHECKS)} checks passed")
     return 1 if failed else 0
