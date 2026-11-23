@@ -69,7 +69,15 @@ export interface Settings {
   interval_youtube: number;
   alert_spike_pct: number;
   alert_spike_min: number;
+  account_period_days: number; // followers: once per calendar 1=day, 7=week, 30=month, 365=year
 }
+
+export const ACCOUNT_PERIODS: { days: number; label: string; noun: string }[] = [
+  { days: 1, label: "Daily", noun: "day" },
+  { days: 7, label: "Weekly", noun: "week" },
+  { days: 30, label: "Monthly", noun: "month" },
+  { days: 365, label: "Yearly", noun: "year" },
+];
 
 export const DEFAULT_SETTINGS: Settings = {
   interval_instagram: 180,
@@ -77,6 +85,7 @@ export const DEFAULT_SETTINGS: Settings = {
   interval_youtube: 60,
   alert_spike_pct: 25,
   alert_spike_min: 50,
+  account_period_days: 1,
 };
 
 export interface OverviewPoint {

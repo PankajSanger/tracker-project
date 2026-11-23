@@ -54,6 +54,7 @@ const cleanSettings = (patch: Partial<Settings>): Partial<Settings> => {
     if (patch[k] === undefined) return;
     const v = Number(patch[k]);
     if (!Number.isFinite(v)) return;
+    if (k === "account_period_days") { if ([1, 7, 30, 365].includes(v)) out[k] = v; return; }
     out[k] = k.startsWith("interval_") ? Math.min(Math.max(Math.round(v), 15), 7 * 1440) : Math.min(Math.max(v, 0), 1e9);
   });
   return out;

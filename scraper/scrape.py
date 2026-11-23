@@ -41,6 +41,9 @@ spike_pct, spike_min = SPIKE_PCT, SPIKE_MIN            # overridden by the dashb
 DEFAULT_INTERVAL = {"instagram": 180, "twitter": 60, "youtube": 60}  # minutes; changeable in the dashboard
 FORCE = os.getenv("FORCE") == "1"                      # manual runs ignore the interval
 HIST_HOURS = 60                                        # recent points kept per post for 24h deltas
+# Followers are tracked per calendar period (dashboard setting account_period_days: 1=daily, 7=weekly, 30=monthly, 365=yearly),
+# counted in this timezone (default India, UTC+5:30): the first run after midnight / Monday / the 1st / Jan 1 takes the snapshot.
+TRACK_TZ = timezone(timedelta(minutes=int(os.getenv("TRACK_TZ_OFFSET_MIN", "330"))))
 MODULES = {"instagram": instagram, "twitter": twitter, "youtube": youtube}
 METRICS = ("likes", "comments", "views", "shares")
 
@@ -52,6 +55,29 @@ def now_iso() -> str:
 def interval_minutes(item: dict, settings: dict) -> int:
     """Per-post override, else the dashboard's platform setting, else the built-in default."""
     return num(item.get("interval_min")) or num(settings.get(f"interval_{item['platform']}")) or DEFAULT_INTERVAL.get(item["platform"], 60)
+
+
+def period_key(when: datetime, days: int) -> str:
+    d = when.astimezone(TRACK_TZ)
+    if days >= 365:
+        return f"{d.year}"
+    if days >= 28:
+        return f"{d.year}-{d.month:02d}"
+    if days >= 7:
+        y, w, _ = d.isocalendar()
+        return f"{y}-W{w:02d}"
+    return d.date().isoformat()
+
+
+def account_due(last_iso, days: int, now: datetime = None) -> bool:
+    """Due once per calendar day / week / month / year (not every N minutes)."""
+    if FORCE or not last_iso:
+        return True
+    try:
+        last = datetime.fromisoformat(last_iso)
+    except ValueError:
+        return True
+    return period_key(now or datetime.now(timezone.utc), days) != period_key(last, days)
 
 
 def is_due(last_iso, minutes: int) -> bool:
@@ -158,7 +184,7 @@ def main() -> int:
     # ---- accounts (followers) ---------------------------------------------------------
     due_acc: dict = {}
     for acc in accounts:
-        if is_due(last_acc.get(acc["id"]), interval_minutes(acc, settings)):
+        if account_due(last_acc.get(acc["id"]), num(settings.get("account_period_days")) or 1):
             due_acc.setdefault(acc["platform"], []).append(acc)
         else:
             skipped += 1

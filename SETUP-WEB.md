@@ -69,6 +69,8 @@ Without `SPREADSHEET_ID` the site runs in **demo mode** on sample data (any logi
 Choose how often each platform is checked (15 minutes to 7 days) and override it per post on the post's page. Runs start every 15 minutes and fetch only posts that are
 **due**, so the shortest real interval is ~15 minutes. **Check now** (post page, table row, or bulk) refreshes a post on the next run, within ~15 minutes.
 Every check costs Apify credit, so longer intervals are cheaper.
+**Follower tracking** (Settings) is separate: Daily, Weekly, Monthly or Yearly. Each account gets one snapshot per calendar day / week (Mon) /
+month / year in India time, taken by the first run after midnight. A new account is checked on the next run.
 **Delete** is on the post page header, on every table row, and in the bulk bar (history stays in the sheet). Defaults: 1 hour for YouTube and X, 3 hours for Instagram. Alert thresholds (spike/drop %) are set there too.
 
 ## Features

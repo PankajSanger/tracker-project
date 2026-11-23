@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { DEFAULT_SETTINGS } from "@/lib/types";
+import { ACCOUNT_PERIODS, DEFAULT_SETTINGS } from "@/lib/types";
 import type { Platform, Settings } from "@/lib/types";
 import { INTERVALS, intervalLabel, PLATFORM_LABEL } from "@/lib/utils";
 import { Icon, PlatformMark, Skeleton, useToast } from "@/components/ui";
@@ -61,7 +61,23 @@ export default function SettingsPage() {
               </div>
             ))}
           </div>
-          <div className="muted small" style={{ marginTop: 12 }}>The fastest possible interval is how often the runners themselves run (your PC checks for due posts every 5 minutes; GitHub every 30 minutes as a backup). Use "Check now" on a post for an immediate refresh.</div>
+          <div className="muted small" style={{ marginTop: 12 }}>The fastest possible interval is 15 minutes, which is how often the runs start. Every check uses Apify credit, so longer intervals cost less. Use "Check now" on a post for an immediate refresh.</div>
+        </div>
+
+        <div className="card">
+          <div className="card-head"><Icon name="users" /><h2>Follower tracking</h2></div>
+          <p className="muted" style={{ marginTop: -4 }}>How often follower and subscriber counts of tracked accounts are recorded. Separate from the post intervals.</p>
+          <div className="pills" role="radiogroup" aria-label="Follower tracking period">
+            {ACCOUNT_PERIODS.map((p) => (
+              <button key={p.days} role="radio" aria-checked={draft.account_period_days === p.days}
+                className={`pill ${draft.account_period_days === p.days ? "on" : ""}`} onClick={() => set("account_period_days", p.days)}>{p.label}</button>
+            ))}
+          </div>
+          <div className="muted small" style={{ marginTop: 12 }}>
+            One snapshot per calendar {ACCOUNT_PERIODS.find((p) => p.days === draft.account_period_days)?.noun ?? "day"} (India time), taken by the first run after
+            {draft.account_period_days === 365 ? " 1 January" : draft.account_period_days === 30 ? " the 1st of the month" : draft.account_period_days === 7 ? " Monday 00:00" : " midnight"}.
+            A newly added account is checked on the next run.
+          </div>
         </div>
 
         <div className="card">

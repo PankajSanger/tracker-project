@@ -24,12 +24,14 @@ GitHub secrets: SPREADSHEET_ID, GOOGLE_SERVICE_ACCOUNT_JSON, APIFY_TOKEN (+ opti
 - st_snapshots: post_id, taken_at, likes, comments, views, shares        (append-only history)
 - st_summary: post_id, last_taken_at, likes, comments, views, shares, hist(JSON ~60h), views_at   (one row per post, fast reads)
 - st_accounts / st_account_snapshots (followers, following, posts_count) / st_alerts
-- st_settings key/value: interval_<platform>, alert_spike_pct/min, `check_now:<post_id>` = ISO time (scraper clears it)
+- st_settings key/value: interval_<platform>, alert_spike_pct/min, `check_now:<post_id>` = ISO time (scraper clears it),
+  account_period_days (1/7/30/365 = followers once per calendar day/ISO week/month/year, IST via TRACK_TZ_OFFSET_MIN=330; default 1)
 - Old tabs `input`, `tracking_data` belong to the legacy script - never touch.
 
 ## scraper/ (Python, venv at ..\venv; deps: requests, google-auth only)
 - scrape.py: due logic = per-post interval_min > interval_<platform> setting > DEFAULT_INTERVAL (ig 180, others 60), tolerance 0.85.
-  Groups due posts by platform -> `mod.fetch_posts(ids)` -> {id: data | Exception}; same for accounts `fetch_profiles(handles)`.
+  Groups due posts by platform -> `mod.fetch_posts(ids)` -> {id: data | Exception}; same for accounts `fetch_profiles(handles)`
+  (accounts use `account_due` = calendar period from account_period_days, not minutes).
   `ApifyError` (token/credit/actor failure) => last_error "Apify: ..." + Telegram alert. "unavailable" errors re-checked only 2x/day.
   Views missing => carry forward last views + views_at. Batched Sheet flush at end (sheets_store retries stale connections).
 - apify_api.py: run_actor(actor, input) = start run, poll, read dataset; APIFY_MAX_USD_PER_RUN cap (0.50). `--check` tests token.
@@ -37,7 +39,7 @@ GitHub secrets: SPREADSHEET_ID, GOOGLE_SERVICE_ACCOUNT_JSON, APIFY_TOKEN (+ opti
 - youtube.py: streamers/youtube-scraper (viewCount, likes, commentsCount; channel subs via @handle/videos, one run per channel).
 - twitter.py: kaitoeasyapi/twitter-x-data-tweet-scraper-pay-per-result-cheapest (tweetIDs; likeCount/replyCount/retweetCount/viewCount).
   FREE Apify plan returns `mock_tweet` items for every X actor tested (also apidojo/tweet-scraper) -> raised as ApifyError.
-- Tests: `..\venv\Scripts\python.exe -m unittest test_apify_parse test_scrape_logic` (13). import_input.py: import legacy `input` tab. alerts.py: Telegram.
+- Tests: `..\venv\Scripts\python.exe -m unittest test_apify_parse test_scrape_logic` (16). import_input.py: import legacy `input` tab. alerts.py: Telegram.
 - Env: SPREADSHEET_ID, GOOGLE_SERVICE_ACCOUNT_FILE|_JSON, APIFY_TOKEN, APIFY_MAX_USD_PER_RUN, PLATFORMS, FORCE, TELEGRAM_*. Local values in scraper/.env.
 
 ## web/ (Next.js 14 app router, TypeScript)

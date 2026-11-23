@@ -1,6 +1,8 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
+import Link from "next/link";
+import { ACCOUNT_PERIODS } from "@/lib/types";
 import type { Account, AccountSnap, Platform } from "@/lib/types";
 import { ago, delta, fmt, PLATFORM_LABEL } from "@/lib/utils";
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -9,13 +11,15 @@ import { AXIS, GRID, TipCard } from "@/components/charts";
 
 const unit = (p: Platform) => (p === "youtube" ? "subscribers" : "followers");
 
-type Range = "24h" | "7d" | "30d" | "90d" | "all";
-const RANGE_MS: Record<Exclude<Range, "all">, number> = { "24h": 864e5, "7d": 7 * 864e5, "30d": 30 * 864e5, "90d": 90 * 864e5 };
+type Range = "7d" | "30d" | "90d" | "1y" | "all";
+const RANGE_MS: Record<Exclude<Range, "all">, number> = { "7d": 7 * 864e5, "30d": 30 * 864e5, "90d": 90 * 864e5, "1y": 365 * 864e5 };
+/** A range that holds several snapshots for the chosen follower period. */
+const defaultRange = (periodDays: number): Range => (periodDays <= 1 ? "30d" : periodDays <= 7 ? "90d" : "all");
 interface Pt { t: number; v: number }
 
 /** Full-size follower chart for one account: range picker, total line or growth-per-period bars. */
-function AccountChart({ account, snaps }: { account: Account; snaps: AccountSnap[] }) {
-  const [range, setRange] = useState<Range>("7d");
+function AccountChart({ account, snaps, periodDays }: { account: Account; snaps: AccountSnap[]; periodDays: number }) {
+  const [range, setRange] = useState<Range>(defaultRange(periodDays));
   const [mode, setMode] = useState<"total" | "growth">("total");
 
   const points = useMemo(() => {
@@ -49,7 +53,7 @@ function AccountChart({ account, snaps }: { account: Account; snaps: AccountSnap
         <Seg value={mode} onChange={setMode} options={[{ value: "total", label: "Total" }, { value: "growth", label: "Growth" }]} />
       </div>
       <div className="toolbar" style={{ marginBottom: 8 }}>
-        <Seg value={range} onChange={setRange} options={[{ value: "24h", label: "24h" }, { value: "7d", label: "7d" }, { value: "30d", label: "30d" }, { value: "90d", label: "90d" }, { value: "all", label: "All" }]} />
+        <Seg value={range} onChange={setRange} options={[{ value: "7d", label: "7d" }, { value: "30d", label: "30d" }, { value: "90d", label: "90d" }, { value: "1y", label: "1y" }, { value: "all", label: "All" }]} />
         <span className="grow" />
         <span className="chip">in range <b className={(gained ?? 0) >= 0 ? "up" : "down"}>{gained === null ? "-" : delta(gained)}</b></span>
         <span className="chip">per day <b className={(perDay ?? 0) >= 0 ? "up" : "down"}>{perDay === null ? "-" : delta(Math.round(perDay))}</b></span>
@@ -95,6 +99,7 @@ export default function AccountsPage() {
   const [handle, setHandle] = useState("");
   const [platform, setPlatform] = useState<Platform>("instagram");
   const [selected, setSelected] = useState<string | null>(null);
+  const [periodDays, setPeriodDays] = useState(1);
   const { toast, show } = useToast();
 
   const load = useCallback(async () => {
@@ -104,7 +109,8 @@ export default function AccountsPage() {
       setSnaps([...r.snaps].sort((a, b) => a.taken_at.localeCompare(b.taken_at)));
     } catch { setAccounts((a) => a ?? []); }
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); api.settings().then((s) => setPeriodDays(s.account_period_days || 1)).catch(() => {}); }, [load]);
+  const period = ACCOUNT_PERIODS.find((p) => p.days === periodDays) ?? ACCOUNT_PERIODS[0];
 
   const byAccount = useMemo(() => {
     const m = new Map<string, AccountSnap[]>();
@@ -121,7 +127,7 @@ export default function AccountsPage() {
   return (
     <>
       <div className="page-head">
-        <div><h1>Accounts</h1><div className="sub">Follower and subscriber growth for the profiles you care about.</div></div>
+        <div><h1>Accounts</h1><div className="sub">Follower and subscriber growth for the profiles you care about. Recorded <b>{period.label.toLowerCase()}</b> · <Link href="/settings" className="up">change</Link></div></div>
       </div>
 
       <div className="card" style={{ marginBottom: 14, padding: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -137,10 +143,9 @@ export default function AccountsPage() {
           {accounts.map((a) => {
             const s = byAccount.get(a.id) ?? [];
             const last = s[s.length - 1];
-            const dayAgo = [...s].reverse().find((x) => new Date(x.taken_at).getTime() <= Date.now() - 864e5);
-            const weekAgo = [...s].reverse().find((x) => new Date(x.taken_at).getTime() <= Date.now() - 7 * 864e5);
-            const d1 = last && dayAgo ? (last.followers ?? 0) - (dayAgo.followers ?? 0) : null;
-            const d7 = last && weekAgo ? (last.followers ?? 0) - (weekAgo.followers ?? 0) : null;
+            const prev = s.length >= 2 ? s[s.length - 2] : undefined;
+            const d = last?.followers != null && prev?.followers != null ? last.followers - prev.followers : null;
+            const since = prev ? new Date(prev.taken_at).toLocaleDateString(undefined, { day: "numeric", month: "short", ...(periodDays >= 30 ? { year: "numeric" } : {}) }) : null;
             const isSel = a.id === (selected ?? accounts[0].id);
             return (
               <div className="card" key={a.id} role="button" tabIndex={0} title="Show the full chart"
@@ -163,9 +168,9 @@ export default function AccountsPage() {
                   <Sparkline values={s.slice(-40).map((x) => x.followers ?? 0)} width={130} height={48} color="var(--accent)" />
                 </div>
                 <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                  <span className="chip">24h <b className={(d1 ?? 0) >= 0 ? "up" : "down"}>{d1 === null ? "-" : delta(d1)}</b></span>
-                  <span className="chip">7d <b className={(d7 ?? 0) >= 0 ? "up" : "down"}>{d7 === null ? "-" : delta(d7)}</b></span>
-                  {d1 !== null && last?.followers ? <DeltaChip value={Number(((d1 / Math.max(last.followers - d1, 1)) * 100).toFixed(2))} suffix="% today" /> : null}
+                  <span className="chip">{since ? `since ${since}` : "since last check"} <b className={(d ?? 0) >= 0 ? "up" : "down"}>{d === null ? "-" : delta(d)}</b></span>
+                  {d !== null && prev?.followers ? <DeltaChip value={Number(((d / Math.max(prev.followers, 1)) * 100).toFixed(2))} suffix="%" /> : null}
+                  <span className="chip">checked {period.label.toLowerCase()}</span>
                 </div>
                 {a.last_error && <div className="small" style={{ color: "var(--warn)", marginTop: 10 }}><Icon name="alert" size={12} /> {a.last_error}</div>}
               </div>
@@ -175,7 +180,7 @@ export default function AccountsPage() {
       )}
       {accounts && accounts.length > 0 && (() => {
         const acc = accounts.find((a) => a.id === selected) ?? accounts[0];
-        return <AccountChart key={acc.id} account={acc} snaps={byAccount.get(acc.id) ?? []} />;
+        return <AccountChart key={`${acc.id}-${periodDays}`} account={acc} snaps={byAccount.get(acc.id) ?? []} periodDays={periodDays} />;
       })()}
       {toast}
     </>
