@@ -32,6 +32,24 @@ class DueLogic(unittest.TestCase):
         self.assertEqual(scrape.interval_minutes({"platform": "instagram"}, {}), 180)                      # then the built-in default
 
 
+class AutoTrack(unittest.TestCase):
+    def test_pick_new_skips_known_old_and_duplicates(self):
+        cands = [
+            {"external_id": "NEW2", "published_at": "2026-11-23T10:00:00.000Z"},
+            {"external_id": "OLDPIN", "published_at": "2025-01-01T00:00:00.000Z"},   # pinned old post
+            {"external_id": "KNOWN", "published_at": "2026-11-23T09:00:00.000Z"},   # already tracked
+            {"external_id": "NEW1", "published_at": "2026-11-22T10:00:00Z"},
+            {"external_id": "NEW1", "published_at": "2026-11-22T10:00:00Z"},        # duplicate in the feed
+            {"external_id": "NODATE", "published_at": ""},
+        ]
+        got = scrape.pick_new(cands, "2026-11-20T00:00:00+00:00", {("instagram", "KNOWN")}, "instagram")
+        self.assertEqual([c["external_id"] for c in got], ["NEW1", "NEW2"])  # oldest first
+
+    def test_no_since_takes_all_unknown(self):
+        got = scrape.pick_new([{"external_id": "A", "published_at": "2020-01-01T00:00:00Z"}], "", set(), "youtube")
+        self.assertEqual(len(got), 1)
+
+
 class AccountPeriods(unittest.TestCase):
     IST = timezone(timedelta(hours=5, minutes=30))
 

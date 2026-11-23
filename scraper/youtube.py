@@ -57,3 +57,30 @@ def fetch_profiles(handles: List[str]) -> Dict[str, Any]:
         out[h] = ({"followers": _count(it["numberOfSubscribers"]), "following": None,
                    "posts_count": _count(it.get("channelTotalVideos"))} if it else RuntimeError("channel not found"))
     return out
+
+
+def map_recent(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out = []
+    for it in items:
+        vid = it.get("id") or parse_url(it.get("url") or "")
+        if not vid or not it.get("date"):
+            continue
+        shorts = (it.get("type") or "").lower().startswith("short")
+        out.append({
+            "external_id": vid,
+            "url": f"https://www.youtube.com/shorts/{vid}" if shorts else f"https://www.youtube.com/watch?v={vid}",
+            "published_at": it["date"],
+            "title": (it.get("title") or "")[:80] or None,
+            "thumbnail": it.get("thumbnailUrl") or None,
+        })
+    return out
+
+
+def fetch_recent(handles: List[str], per_kind: int = 5) -> Dict[str, Any]:
+    """Newest videos and Shorts of each channel (one small run per channel; each video is one Apify result)."""
+    out: Dict[str, Any] = {}
+    for h in handles:
+        items = run_actor(ACTOR, {"startUrls": [{"url": f"https://www.youtube.com/@{h.lstrip('@')}"}],
+                                  "maxResults": per_kind, "maxResultsShorts": per_kind, "maxResultStreams": 0})
+        out[h] = map_recent(items) if items else RuntimeError("channel not found or has no videos")
+    return out

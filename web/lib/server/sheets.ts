@@ -11,6 +11,7 @@ export const TABS: Record<string, string[]> = {
   st_account_snapshots: ["account_id", "taken_at", "followers", "following", "posts_count"],
   st_alerts: ["created_at", "post_id", "kind", "message"],
   st_settings: ["key", "value"],
+  st_watch: ["id", "platform", "handle", "campaign", "active", "interval_min", "since", "last_checked", "last_found", "posts_found", "last_error", "created_at", "added_by"],
 };
 
 export type Row = Record<string, string>;

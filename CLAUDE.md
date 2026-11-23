@@ -25,6 +25,8 @@ GitHub secrets: SPREADSHEET_ID, GOOGLE_SERVICE_ACCOUNT_JSON, APIFY_TOKEN (+ opti
 - st_snapshots: post_id, taken_at, likes, comments, views, shares        (append-only history)
 - st_summary: post_id, last_taken_at, likes, comments, views, shares, hist(JSON ~60h), views_at   (one row per post, fast reads)
 - st_accounts / st_account_snapshots (followers, following, posts_count) / st_alerts
+- st_watch (auto-track): id, platform, handle, campaign, active, interval_min (default 180), since, last_checked, last_found, posts_found,
+  last_error, created_at, added_by. New posts get added_by "auto:@handle".
 - st_settings key/value: interval_<platform>, alert_spike_pct/min, `check_now:<post_id>` = ISO time (scraper clears it),
   account_period_days (1/7/30/365 = followers once per calendar day/ISO week/month/year, IST via TRACK_TZ_OFFSET_MIN=330; default 1),
   `share:<token>` = JSON {c: campaign|null, by, at} client report links (value "" = revoked)
@@ -34,6 +36,8 @@ GitHub secrets: SPREADSHEET_ID, GOOGLE_SERVICE_ACCOUNT_JSON, APIFY_TOKEN (+ opti
 - scrape.py: due logic = per-post interval_min > interval_<platform> setting > DEFAULT_INTERVAL (ig 180, others 60), tolerance 0.85.
   Groups due posts by platform -> `mod.fetch_posts(ids)` -> {id: data | Exception}; same for accounts `fetch_profiles(handles)`
   (accounts use `account_due` = calendar period from account_period_days, not minutes).
+  `run_watches` runs first: due watches -> mod.fetch_recent(handles) (IG: profile scraper latestPosts = 1 result; YT: 5 videos + 5 Shorts;
+  X: 5 own posts) -> `pick_new` (published >= since, not tracked, dedup) -> appended to st_posts and fetched in the same run.
   `ApifyError` (token/credit/actor failure) => last_error "Apify: ..." + Telegram alert. "unavailable" errors re-checked only 2x/day.
   Views missing => carry forward last views + views_at. Batched Sheet flush at end (sheets_store retries stale connections).
 - apify_api.py: run_actor(actor, input) = start run, poll, read dataset; APIFY_MAX_USD_PER_RUN cap (0.50). `--check` tests token.
@@ -49,11 +53,12 @@ GitHub secrets: SPREADSHEET_ID, GOOGLE_SERVICE_ACCOUNT_JSON, APIFY_TOKEN (+ opti
   auth.ts (HMAC cookie session, TEAM_USERS "email:pass,..."), analytics.ts (deltas, growth, engagement).
 - lib: types.ts (PostRow, Settings, DEFAULT_SETTINGS), api.ts (client fetchers), hooks.ts, utils.ts (viewsStale, INTERVALS).
 - Pages: / overview, /posts (table+cards, bulk bar: check now/pause/delete), /post?id= (detail, interval override, Check now, Delete),
-  /compare, /accounts, /reports (campaign reports + client links), /alerts, /settings.
+  /compare, /accounts, /autotrack (watch accounts), /reports (campaign reports + client links), /alerts, /settings.
+  Overview: KPIs vs previous period (overview.prev_growth), Top content gallery (overview.post_growth), Campaigns, Audience, Needs attention.
   /report?c=Campaign (team) or /report?t=token (client, no login; Shell renders it bare) - "Download PDF" = window.print + @media print A4 CSS.
   Components: Shell.tsx, ui.tsx (Thumb, Cover, Kpi...), charts.tsx. Theme: "enterprise navy" tokens in globals.css (--nav-*, --accent #1f5fd6).
 - API: posts, posts/[id] (PATCH incl. check_now, DELETE), accounts(/[id]), alerts, compare, overview, settings, login/logout/me,
-  shares (GET/POST/DELETE, team), report (?t= public read-only: campaign comes from the token only; else needs login). buildReport in analytics.ts.
+  watches (GET/POST), watches/[id] (PATCH/DELETE), shares (GET/POST/DELETE, team), report (?t= public read-only: campaign comes from the token only; else needs login). buildReport in analytics.ts.
 - Vercel env: SPREADSHEET_ID, GOOGLE_SERVICE_ACCOUNT_B64, TEAM_USERS, SESSION_SECRET. Deploy: `cd web; npx vercel --prod`.
 - Dev: `cd web; npm run dev` (demo mode without .env.local).
 

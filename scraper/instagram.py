@@ -78,3 +78,37 @@ def fetch_profiles(handles: List[str]) -> Dict[str, Any]:
         it = by_name.get(n.lower())
         out[h] = map_profile(it) if it and it.get("followersCount") is not None else RuntimeError("profile not found or private")
     return out
+
+
+def map_recent(item: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The profile's latest posts (photos, carousels and reels, newest ~12) as new-post candidates."""
+    out = []
+    for p in item.get("latestPosts") or []:
+        code = p.get("shortCode")
+        if not code or not p.get("timestamp"):
+            continue
+        out.append({
+            "external_id": code,
+            "url": f"https://www.instagram.com/{'reel' if p.get('type') == 'Video' else 'p'}/{code}/",
+            "published_at": p["timestamp"],
+            "title": ((p.get("caption") or "").replace("\n", " ")[:80]) or None,
+            "thumbnail": p.get("displayUrl") or None,
+        })
+    return out
+
+
+def fetch_recent(handles: List[str]) -> Dict[str, Any]:
+    """{handle: [candidate posts] | Exception} - one profile result per account (cheap)."""
+    names = [h.lstrip("@") for h in handles]
+    items = run_actor(PROFILE_ACTOR, {"usernames": names})
+    by_name = {(it.get("username") or "").lower(): it for it in items if it.get("username")}
+    out: Dict[str, Any] = {}
+    for h, n in zip(handles, names):
+        it = by_name.get(n.lower())
+        if not it:
+            out[h] = RuntimeError("profile not found")
+        elif it.get("private"):
+            out[h] = RuntimeError("profile is private")
+        else:
+            out[h] = map_recent(it)
+    return out

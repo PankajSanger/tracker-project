@@ -80,6 +80,10 @@ month / year in India time, taken by the first run after midnight. A new account
 - Bulk-paste URLs (Instagram, YouTube watch / youtu.be / shorts, X), campaign tags, pause/delete, CSV export
 - Account tracking (followers / subscribers over time), spike/drop alerts + optional Telegram push
 - Post thumbnails everywhere (tables, cards, reports)
+- **Auto-track**: watch an Instagram / YouTube / X account (with a campaign, a check frequency and an optional start
+  date up to 30 days back) and its new posts are added and tracked automatically. Cost per check: Instagram 1 Apify
+  result, YouTube up to 10, X up to 5 (paid plan). Auto-added posts carry an "auto" tag.
+- Overview: KPIs compared with the previous period, top content gallery, campaign and audience summaries
 - **Reports** page: a client-ready report per campaign (or all posts) with KPIs, growth chart, platform split and a content table.
   **Download PDF** prints it on A4. **New client link** makes a secret read-only link (no login, only that campaign, live numbers);
   links are listed per campaign and can be revoked any time.

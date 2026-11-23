@@ -7,6 +7,7 @@ Run by GitHub Actions on a cron; also runnable locally:
     python scrape.py            (secrets are read from scraper/.env or the environment)
 """
 import json
+import uuid
 import logging
 import os
 import sys
@@ -106,12 +107,86 @@ def spike_alerts(post: dict, prev: dict, cur: dict) -> list:
     return out
 
 
+WATCH_DEFAULT_MIN = 180  # how often an auto-tracked account is checked for new posts, unless set per account
+
+
+def _ts(iso: str):
+    try:
+        d = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def pick_new(candidates: list, since_iso: str, known: set, platform: str) -> list:
+    """Candidates published at/after `since` that are not tracked yet (pinned old posts are skipped by date)."""
+    since = _ts(since_iso) if since_iso else None
+    out, seen = [], set()
+    for c in candidates:
+        key = (platform, c["external_id"])
+        pub = _ts(c.get("published_at") or "")
+        if key in known or key in seen or pub is None or (since and pub < since):
+            continue
+        seen.add(key)
+        out.append(c)
+    return sorted(out, key=lambda c: c["published_at"])
+
+
+def run_watches(store, allowed: set, every_post: list) -> list:
+    """Auto-track: look for new posts of watched accounts and add them to st_posts. Returns the new post rows."""
+    watches = [w for w in store.read("st_watch") if w.get("id") and truthy(w.get("active")) and w.get("platform") in allowed]
+    due = [w for w in watches if is_due(w.get("last_checked"), num(w.get("interval_min")) or WATCH_DEFAULT_MIN)]
+    if not due:
+        return []
+    known = {(p["platform"], p["external_id"]) for p in every_post}
+    new_rows, changes = [], {}
+    by_platform: dict = {}
+    for w in due:
+        by_platform.setdefault(w["platform"], []).append(w)
+    for platform, ws in by_platform.items():
+        handles = list(dict.fromkeys(w["handle"] for w in ws))
+        try:
+            found = MODULES[platform].fetch_recent(handles)
+        except ApifyError as exc:
+            log.error("Apify auto-track %s: %s", platform, exc)
+            found = {h: exc for h in handles}
+        for w in ws:
+            res = found.get(w["handle"])
+            ch = {"last_checked": now_iso()}
+            if isinstance(res, Exception) or res is None:
+                ch["last_error"] = (f"Apify: {res}" if isinstance(res, ApifyError) else str(res or "nothing returned"))[:300]
+                log.error("FAIL auto-track %s @%s: %s", platform, w["handle"], ch["last_error"])
+            else:
+                fresh = pick_new(res, w.get("since") or w.get("created_at") or "", known, platform)
+                for c in fresh:
+                    known.add((platform, c["external_id"]))
+                    new_rows.append({
+                        "id": str(uuid.uuid4()), "platform": platform, "url": c["url"], "external_id": c["external_id"],
+                        "title": c.get("title") or "", "author": w["handle"].lstrip("@"), "campaign": w.get("campaign") or "",
+                        "added_by": f"auto:@{w['handle'].lstrip('@')}", "active": "TRUE", "last_error": "", "created_at": now_iso(),
+                        "interval_min": "", "thumbnail": c.get("thumbnail") or "",
+                    })
+                ch["last_error"] = ""
+                if fresh:
+                    ch["last_found"] = now_iso()
+                    ch["posts_found"] = str((num(w.get("posts_found")) or 0) + len(fresh))
+                log.info("OK   auto-track %s @%s: %d recent, %d new", platform, w["handle"], len(res), len(fresh))
+            changes[w["id"]] = ch
+    if new_rows:
+        store.append("st_posts", new_rows)
+        alerts.notify(f"Tracker: auto-track added {len(new_rows)} new post(s)")
+    store.update_cells("st_watch", changes)
+    return new_rows
+
+
 def main() -> int:
     store = SheetsStore()
     store.ensure_tabs()
     # PLATFORMS limits a run to some platforms (default: all three).
     allowed = {x.strip() for x in os.getenv("PLATFORMS", "instagram,twitter,youtube").split(",") if x.strip()}
-    all_posts = [p for p in store.read("st_posts") if p.get("id") and truthy(p.get("active"))]
+    every_post = [p for p in store.read("st_posts") if p.get("id")]
+    new_posts = run_watches(store, allowed, every_post)  # auto-track: add accounts' new posts first, so they are fetched this run
+    all_posts = [p for p in every_post + new_posts if truthy(p.get("active"))]
     posts = [p for p in all_posts if p["platform"] in allowed]
     accounts = [a for a in store.read("st_accounts") if a.get("id") and truthy(a.get("active")) and a["platform"] in allowed]
     prev_summary = {r["post_id"]: r for r in store.read("st_summary")}

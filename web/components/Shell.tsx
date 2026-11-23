@@ -21,11 +21,12 @@ const NAV: [string, string, string][] = [
   ["/posts", "Posts", "list"],
   ["/compare", "Compare", "bars"],
   ["/accounts", "Accounts", "users"],
+  ["/autotrack", "Auto-track", "zap"],
   ["/reports", "Reports", "report"],
   ["/alerts", "Alerts", "bell"],
   ["/settings", "Settings", "sliders"],
 ];
-const SECTIONS: [string, string[]][] = [["Analytics", ["/", "/posts", "/compare", "/accounts"]], ["Clients", ["/reports"]], ["Workspace", ["/alerts", "/settings"]]];
+const SECTIONS: [string, string[]][] = [["Analytics", ["/", "/posts", "/compare", "/accounts", "/autotrack"]], ["Clients", ["/reports"]], ["Workspace", ["/alerts", "/settings"]]];
 
 export default function Shell({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);

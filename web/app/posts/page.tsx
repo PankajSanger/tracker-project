@@ -199,7 +199,7 @@ export default function PostsPage() {
                           <div className="s">
                             <span>{p.author ?? PLATFORM_LABEL[p.platform]}</span>
                             {p.campaign && <span className="tag">{p.campaign}</span>}
-                            {p.added_by && <span>by {p.added_by.split("@")[0]}</span>}
+                            {p.added_by && (p.added_by.startsWith("auto:") ? <span className="chip accent" title={`Added automatically from ${p.added_by.slice(5)}`}><Icon name="zap" size={10} /> auto</span> : <span>by {p.added_by.split("@")[0]}</span>)}
                             {p.interval_min && <span className="chip"><Icon name="clock" size={10} /> {intervalLabel(p.interval_min)}</span>}
                           </div>
                           {p.last_error && <div className="err small" title={p.last_error} style={{ overflow: "hidden", textOverflow: "ellipsis", maxWidth: 380 }}>{p.last_error}</div>}

@@ -28,6 +28,9 @@ TABS: Dict[str, List[str]] = {
     "st_account_snapshots": ["account_id", "taken_at", "followers", "following", "posts_count"],
     "st_alerts": ["created_at", "post_id", "kind", "message"],
     "st_settings": ["key", "value"],
+    # auto-track: accounts whose new posts are added to st_posts automatically
+    "st_watch": ["id", "platform", "handle", "campaign", "active", "interval_min", "since", "last_checked", "last_found",
+                 "posts_found", "last_error", "created_at", "added_by"],
 }
 
 

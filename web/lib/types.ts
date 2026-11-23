@@ -126,6 +126,31 @@ export const DEFAULT_SETTINGS: Settings = {
   account_period_days: 1,
 };
 
+/** Auto-track: an account whose new posts are added and tracked automatically. */
+export interface Watch {
+  id: string;
+  platform: Platform;
+  handle: string;
+  campaign: string | null;
+  active: boolean;
+  interval_min: number | null; // how often to look for new posts (null = default, 3 hours)
+  since: string | null;        // only posts published after this are added
+  last_checked: string | null;
+  last_found: string | null;
+  posts_found: number;
+  last_error: string | null;
+  created_at: string;
+  added_by: string | null;
+}
+
+export interface NewWatch {
+  platform: Platform;
+  handle: string;
+  campaign: string | null;
+  interval_min: number;
+  backfill_days: number; // 0 = only posts published from now on
+}
+
 export interface OverviewPoint {
   t: number;
   likes: number;
@@ -139,6 +164,8 @@ export interface OverviewPoint {
 export interface Overview {
   series: OverviewPoint[];
   growth: { likes: number; comments: number; views: number };
+  prev_growth: { likes: number; comments: number; views: number } | null; // same-length period before (null for "all")
+  post_growth: Record<string, { likes: number; comments: number; views: number }>; // per post, inside the period
   days: number;
 }
 

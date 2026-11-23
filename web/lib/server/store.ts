@@ -1,7 +1,7 @@
 // Data layer: Google Sheets in production, an in-memory demo when no sheet is configured.
 import { randomBytes, randomUUID } from "crypto";
 import { DEFAULT_SETTINGS } from "../types";
-import type { Account, AccountSnap, AlertRow, NewPost, Overview, PostRow, Report, Settings, ShareLink, Snapshot } from "../types";
+import type { Account, AccountSnap, AlertRow, NewPost, NewWatch, Overview, PostRow, Report, Settings, ShareLink, Snapshot, Watch } from "../types";
 import { buildOverview, buildReport, downsample, groupSeries, type SnapRow } from "./analytics";
 import * as sh from "./sheets";
 
@@ -34,7 +34,31 @@ export interface Store {
   createShare(campaign: string | null, by: string): Promise<ShareLink>;
   revokeShare(token: string): Promise<void>;
   getShare(token: string): Promise<ShareLink | null>;
+  listWatches(): Promise<Watch[]>;
+  addWatch(w: NewWatch, by: string): Promise<{ added: boolean }>;
+  updateWatch(id: string, patch: WatchPatch): Promise<void>;
+  deleteWatch(id: string): Promise<void>;
 }
+
+export interface WatchPatch {
+  active?: boolean;
+  interval_min?: number | null;
+  campaign?: string | null;
+}
+
+const toWatch = (x: Record<string, string>): Watch => ({
+  id: x.id, platform: x.platform as Watch["platform"], handle: x.handle, campaign: x.campaign || null, active: ["true", "1", "yes", "y"].includes(String(x.active).toLowerCase()),
+  interval_min: x.interval_min ? Number(x.interval_min) || null : null, since: x.since || null, last_checked: x.last_checked || null,
+  last_found: x.last_found || null, posts_found: Number(x.posts_found) || 0, last_error: x.last_error || null, created_at: x.created_at, added_by: x.added_by || null,
+});
+const newWatchRow = (w: NewWatch, by: string) => {
+  const now = new Date();
+  return {
+    id: randomUUID(), platform: w.platform, handle: w.handle, campaign: w.campaign ?? "", active: "TRUE", interval_min: String(w.interval_min),
+    since: new Date(now.getTime() - w.backfill_days * 864e5).toISOString(), last_checked: "", last_found: "", posts_found: "0",
+    last_error: "", created_at: now.toISOString(), added_by: by,
+  };
+};
 
 /** Posts in a report: one campaign, or every post (campaign null). */
 const inCampaign = (posts: PostRow[], campaign: string | null) => (campaign === null ? posts : posts.filter((p) => (p.campaign ?? "") === campaign));
@@ -185,10 +209,27 @@ const sheetsStore: Store = {
   },
   async revokeShare(token) { await sh.upsertKV("st_settings", { [SHARE + token]: "" }); },
   async getShare(token) { return (await this.listShares()).find((s) => s.token === token) ?? null; },
+  async listWatches() {
+    return (await sh.readTab("st_watch")).filter((x) => x.id).map(toWatch).sort((a, b) => b.created_at.localeCompare(a.created_at));
+  },
+  async addWatch(w, by) {
+    const have = (await sh.readTab("st_watch")).some((x) => x.id && x.platform === w.platform && x.handle.toLowerCase() === w.handle.toLowerCase());
+    if (have) return { added: false };
+    await sh.appendRows("st_watch", [newWatchRow(w, by)]);
+    return { added: true };
+  },
+  async updateWatch(id, patch) {
+    const cols: Record<string, string> = {};
+    if (patch.active !== undefined) cols.active = patch.active ? "TRUE" : "FALSE";
+    if (patch.interval_min !== undefined) cols.interval_min = patch.interval_min === null ? "" : String(patch.interval_min);
+    if (patch.campaign !== undefined) cols.campaign = patch.campaign ?? "";
+    if (Object.keys(cols).length) await sh.updateCells("st_watch", id, cols);
+  },
+  async deleteWatch(id) { await sh.deleteRowById("st_watch", id); },
 };
 
 /* ------------------------------------------------------------ Demo (RAM) */
-type DemoDb = { posts: any[]; snaps: SnapRow[]; accounts: Account[]; accSnaps: AccountSnap[]; alerts: AlertRow[]; settings: Settings; shares: ShareLink[] };
+type DemoDb = { posts: any[]; snaps: SnapRow[]; accounts: Account[]; accSnaps: AccountSnap[]; alerts: AlertRow[]; settings: Settings; shares: ShareLink[]; watches: Watch[] };
 const g = globalThis as unknown as { __demoDb?: DemoDb };
 
 function seedDemo(): DemoDb {
@@ -233,7 +274,15 @@ function seedDemo(): DemoDb {
     { id: 2, created_at: new Date(now - 19 * 36e5).toISOString(), kind: "spike", message: `youtube spike: views 190,400 -> 251,100 (+32%) ${posts[1].url}` },
     { id: 3, created_at: new Date(now - 30 * 36e5).toISOString(), kind: "drop", message: `twitter drop: likes 3,400 -> 2,310 (-32%) ${posts[3].url}` },
   ];
-  return { posts, snaps, accounts, accSnaps, alerts, settings: { ...DEFAULT_SETTINGS }, shares: [] };
+  const watches: Watch[] = [
+    { ...toWatch(newWatchRow({ platform: "instagram", handle: "brand_official", campaign: "Launch", interval_min: 180, backfill_days: 7 }, "asha@team.com")),
+      last_checked: new Date(now - 40 * 6e4).toISOString(), last_found: new Date(now - 26 * 36e5).toISOString(), posts_found: 2 },
+    { ...toWatch(newWatchRow({ platform: "youtube", handle: "BrandChannel", campaign: null, interval_min: 360, backfill_days: 0 }, "ravi@team.com")),
+      last_checked: new Date(now - 2 * 36e5).toISOString() },
+  ];
+  posts[0].added_by = "auto:@brand_official";
+  posts[2].added_by = "auto:@brand_official";
+  return { posts, snaps, accounts, accSnaps, alerts, settings: { ...DEFAULT_SETTINGS }, shares: [], watches };
 }
 const db = (): DemoDb => (g.__demoDb ??= seedDemo());
 
@@ -294,6 +343,21 @@ const demoStore: Store = {
   },
   async revokeShare(token) { const d = db(); d.shares = d.shares.filter((s) => s.token !== token); },
   async getShare(token) { return db().shares.find((s) => s.token === token) ?? null; },
+  async listWatches() { return [...db().watches]; },
+  async addWatch(w, by) {
+    const d = db();
+    if (d.watches.some((x) => x.platform === w.platform && x.handle.toLowerCase() === w.handle.toLowerCase())) return { added: false };
+    d.watches.unshift(toWatch(newWatchRow(w, by)));
+    return { added: true };
+  },
+  async updateWatch(id, patch) {
+    const x = db().watches.find((w) => w.id === id);
+    if (!x) throw new Error("not found");
+    if (patch.active !== undefined) x.active = patch.active;
+    if (patch.interval_min !== undefined) x.interval_min = patch.interval_min;
+    if (patch.campaign !== undefined) x.campaign = patch.campaign;
+  },
+  async deleteWatch(id) { const d = db(); d.watches = d.watches.filter((w) => w.id !== id); },
 };
 
 export const store: Store = sh.sheetsConfigured() ? sheetsStore : demoStore;

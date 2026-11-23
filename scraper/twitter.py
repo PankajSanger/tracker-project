@@ -71,3 +71,35 @@ def fetch_profiles(handles: List[str]) -> Dict[str, Any]:
         out[h] = ({"followers": _count(a.get("followers")), "following": _count(a.get("following")),
                    "posts_count": _count(a.get("statusesCount"))} if a else RuntimeError("account not found, protected or has no tweets"))
     return out
+
+
+def _created(s: Any) -> Optional[str]:
+    """X dates look like 'Wed Oct 10 20:19:24 +0000 2018'; return ISO."""
+    from datetime import datetime
+    if not s:
+        return None
+    for fmt in ("%a %b %d %H:%M:%S %z %Y",):
+        try:
+            return datetime.strptime(str(s), fmt).isoformat()
+        except ValueError:
+            pass
+    try:
+        return datetime.fromisoformat(str(s).replace("Z", "+00:00")).isoformat()
+    except ValueError:
+        return None
+
+
+def fetch_recent(handles: List[str], n: int = 5) -> Dict[str, Any]:
+    """Newest own posts (no replies or reposts) of each account."""
+    out: Dict[str, Any] = {}
+    for h in handles:
+        name = h.lstrip("@")
+        items = _real(run_actor(ACTOR, {"searchTerms": [f"from:{name} -filter:replies -filter:nativeretweets"], "maxItems": n, "queryType": "Latest"}))
+        posts = []
+        for it in items:
+            tid, ts = str(it.get("id") or ""), _created(it.get("createdAt"))
+            if tid.isdigit() and ts:
+                posts.append({"external_id": tid, "url": f"https://x.com/{name}/status/{tid}", "published_at": ts,
+                              "title": ((it.get("text") or "").replace("\n", " ")[:80]) or None, "thumbnail": _thumb(it)})
+        out[h] = posts
+    return out

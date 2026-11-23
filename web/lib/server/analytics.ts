@@ -39,6 +39,9 @@ export function buildOverview(snaps: SnapRow[], days: number, buckets = 56): Ove
 
   const series: OverviewPoint[] = times.map((t) => ({ t, likes: 0, comments: 0, views: 0, g_likes: 0, g_comments: 0, g_views: 0 }));
   const growth = { likes: 0, comments: 0, views: 0 };
+  const post_growth: Overview["post_growth"] = {};
+  const prev = days > 0 ? { likes: 0, comments: 0, views: 0 } : null;
+  const prevStart = start - span;
 
   byPost.forEach((arr) => {
     const ts = arr.map((s) => new Date(s.taken_at).getTime());
@@ -59,12 +62,26 @@ export function buildOverview(snaps: SnapRow[], days: number, buckets = 56): Ove
       series[k].g_views += Math.max(0, clamp((cur.views ?? 0) - (base.views ?? 0)));
     });
     const last = arr[arr.length - 1];
-    growth.likes += Math.max(0, clamp((last.likes ?? 0) - (base.likes ?? 0)));
-    growth.comments += Math.max(0, clamp((last.comments ?? 0) - (base.comments ?? 0)));
-    growth.views += Math.max(0, clamp((last.views ?? 0) - (base.views ?? 0)));
+    const gain = (k: "likes" | "comments" | "views") => Math.max(0, clamp((last[k] ?? 0) - (base[k] ?? 0)));
+    const pg = { likes: gain("likes"), comments: gain("comments"), views: gain("views") };
+    post_growth[arr[0].post_id] = pg;
+    growth.likes += pg.likes;
+    growth.comments += pg.comments;
+    growth.views += pg.views;
+    if (prev) {
+      // previous period: value at its end (= our baseline) minus value at its start (or the first value inside it)
+      let pi = -1;
+      for (let i = 0; i < ts.length; i++) if (ts[i] <= prevStart) pi = i;
+      const p0 = pi >= 0 ? arr[pi] : ts[0] <= start ? arr[0] : null;
+      if (p0 && bi >= 0) {
+        prev.likes += Math.max(0, clamp((base.likes ?? 0) - (p0.likes ?? 0)));
+        prev.comments += Math.max(0, clamp((base.comments ?? 0) - (p0.comments ?? 0)));
+        prev.views += Math.max(0, clamp((base.views ?? 0) - (p0.views ?? 0)));
+      }
+    }
   });
 
-  return { series, growth, days };
+  return { series, growth, prev_growth: prev, post_growth, days };
 }
 
 export function groupSeries(snaps: SnapRow[], ids: string[]): Record<string, Snapshot[]> {

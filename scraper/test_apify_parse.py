@@ -40,6 +40,29 @@ class InstagramMapping(unittest.TestCase):
         self.assertIsNone(ig.parse_url("https://example.com/p/1"))
 
 
+class RecentPosts(unittest.TestCase):
+    def test_instagram_latest_posts(self):
+        item = {"username": "brand", "latestPosts": [
+            {"shortCode": "R1", "type": "Video", "timestamp": "2026-11-20T10:00:00.000Z", "caption": "a\nb", "displayUrl": "https://i"},
+            {"shortCode": "P1", "type": "Image", "timestamp": "2026-11-19T10:00:00.000Z"},
+            {"shortCode": None, "timestamp": "2026-11-19T10:00:00.000Z"},
+        ]}
+        got = ig.map_recent(item)
+        self.assertEqual([g["url"] for g in got], ["https://www.instagram.com/reel/R1/", "https://www.instagram.com/p/P1/"])
+        self.assertEqual(got[0]["title"], "a b")
+        with mock.patch.object(ig, "run_actor", return_value=[{"username": "secret", "private": True}]):
+            self.assertIsInstance(ig.fetch_recent(["secret"])["secret"], Exception)
+
+    def test_youtube_videos_and_shorts(self):
+        got = yt.map_recent([{"id": "AAAAAAAAAAA", "type": "video", "date": "2026-11-20T00:00:00Z"},
+                             {"id": "BBBBBBBBBBB", "type": "shorts", "date": "2026-11-21T00:00:00Z"}])
+        self.assertEqual(got[0]["url"], "https://www.youtube.com/watch?v=AAAAAAAAAAA")
+        self.assertEqual(got[1]["url"], "https://www.youtube.com/shorts/BBBBBBBBBBB")
+
+    def test_x_dates(self):
+        self.assertEqual(tw._created("Wed Oct 10 20:19:24 +0000 2018"), "2018-10-10T20:19:24+00:00")
+
+
 class YouTubeMapping(unittest.TestCase):
     def test_video(self):
         with mock.patch.object(yt, "run_actor", return_value=[{"id": "BUoni23eKTY", "viewCount": 158230, "likes": 3500, "commentsCount": 530, "channelName": "Trustified", "title": "T"}]):
