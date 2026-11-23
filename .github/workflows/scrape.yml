@@ -24,6 +24,7 @@ jobs:
           # YouTube and X are scraped with Selenium + Beautiful Soup (headless Chrome is preinstalled on the runner).
           # Instagram uses the Graph API and is included once the IG_GRAPH_TOKEN secret exists.
           PLATFORMS: ${{ format('twitter,youtube{0}', secrets.IG_GRAPH_TOKEN != '' && ',instagram' || '') }}
+          SKIP_ACCOUNTS: twitter   # X blocks profile pages from server IPs; the PC task (run_scrape.bat) covers X follower counts
           FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}   # manual runs ignore the intervals
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}

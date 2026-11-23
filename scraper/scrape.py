@@ -106,7 +106,8 @@ def main() -> int:
     allowed = {x.strip() for x in os.getenv("PLATFORMS", "instagram,twitter,youtube").split(",") if x.strip()}
     all_posts = [p for p in store.read("st_posts") if p.get("id") and truthy(p.get("active"))]
     posts = [p for p in all_posts if p["platform"] in allowed]
-    accounts = [a for a in store.read("st_accounts") if a.get("id") and truthy(a.get("active")) and a["platform"] in allowed]
+    skip_acc = {x.strip() for x in os.getenv("SKIP_ACCOUNTS", "").split(",") if x.strip()}  # e.g. X profiles are login-walled on GitHub's IPs
+    accounts = [a for a in store.read("st_accounts") if a.get("id") and truthy(a.get("active")) and a["platform"] in allowed and a["platform"] not in skip_acc]
     prev_summary = {r["post_id"]: r for r in store.read("st_summary")}
     settings = {r["key"]: r["value"] for r in store.read("st_settings")}
     global spike_pct, spike_min
