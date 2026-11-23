@@ -21,12 +21,13 @@ jobs:
       - run: python scrape.py
         working-directory: scraper
         env:
-          # Instagram runs from the team PC (see SETUP-WEB.md). YouTube blocks keyless scraping from GitHub, so it is only
-          # scraped here once a YT_API_KEY secret exists; until then the PC covers it.
-          PLATFORMS: ${{ secrets.YT_API_KEY != '' && 'twitter,youtube' || 'twitter' }}
+          # YouTube and X are scraped with Selenium + Beautiful Soup (headless Chrome is preinstalled on the runner).
+          # Instagram uses the Graph API and is included once the IG_GRAPH_TOKEN secret exists.
+          PLATFORMS: ${{ format('twitter,youtube{0}', secrets.IG_GRAPH_TOKEN != '' && ',instagram' || '') }}
           FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}   # manual runs ignore the intervals
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          YT_API_KEY: ${{ secrets.YT_API_KEY }}
+          IG_GRAPH_TOKEN: ${{ secrets.IG_GRAPH_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}

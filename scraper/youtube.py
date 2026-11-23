@@ -1,24 +1,19 @@
-"""YouTube metrics.
+"""YouTube metrics via Selenium (headless Chrome) + Beautiful Soup.
 
-* With env YT_API_KEY (free, YouTube Data API v3, 10k units/day; each lookup costs 1 unit)
-  -> views, likes, comments, subscribers via the official API.
-* Without a key -> falls back to parsing the public watch/channel page (views + likes only,
-  no comment count; subscriber count is rounded by YouTube, e.g. "66.2K").
+* post: views (itemprop meta), likes (page data), comments (comments header after scrolling), title, channel
+* channel: subscriber count from the channel page
 """
 import json
-import os
 import re
+import time
 from typing import Any, Dict, Optional
 
-import requests
+from bs4 import BeautifulSoup
+from selenium.webdriver.common.by import By
+
+import browser
 
 _ID_RE = re.compile(r"(?:youtube\.com/(?:watch\?(?:.*&)?v=|shorts/|live/|embed/)|youtu\.be/)([A-Za-z0-9_-]{11})")
-UA = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Cookie": "CONSENT=YES+1; SOCS=CAI",
-}
-API = "https://www.googleapis.com/youtube/v3"
 
 
 def parse_url(url: str) -> Optional[str]:
@@ -26,85 +21,141 @@ def parse_url(url: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
-def _key() -> Optional[str]:
-    return os.environ.get("YT_API_KEY") or None
-
-
-def _num(v: Any) -> Optional[int]:
-    try:
-        return int(v)
-    except (TypeError, ValueError):
+def _num(text: Optional[str]) -> Optional[int]:
+    """'1,234' -> 1234, '66.2K' -> 66200, '1.2M' -> 1200000."""
+    if not text:
         return None
-
-
-def _short_count(text: str) -> Optional[int]:
-    m = re.match(r"([\d.,]+)\s*([KMB]?)", text.strip(), re.I)
+    m = re.search(r"([\d][\d.,]*)\s*([KMB]?)", text.strip(), re.I)
     if not m:
         return None
     mult = {"": 1, "K": 1e3, "M": 1e6, "B": 1e9}[m.group(2).upper()]
-    return int(float(m.group(1).replace(",", "")) * mult)
+    try:
+        return int(round(float(m.group(1).replace(",", "")) * mult))
+    except ValueError:
+        return None
 
 
-def _api(path: str, **params: Any) -> Dict[str, Any]:
-    r = requests.get(f"{API}/{path}", params={**params, "key": _key()}, timeout=20)
-    if r.status_code in (400, 403):
-        msg = (r.json().get("error") or {}).get("message", r.text[:120])
-        raise RuntimeError(f"YouTube API error: {msg}")
-    r.raise_for_status()
-    return r.json()
+def _handle_consent(driver) -> None:
+    """EU-style cookie wall: click 'Reject all' / 'Accept all' if it is showing."""
+    try:
+        if "consent." not in driver.current_url and not driver.find_elements(By.CSS_SELECTOR, "ytd-consent-bump-v2-lightbox, tp-yt-paper-dialog form[action*='consent']"):
+            return
+        for label in ("Reject all", "Accept all", "I agree"):
+            btns = driver.find_elements(By.XPATH, f"//button[.//span[contains(text(), '{label}')]] | //button[contains(@aria-label, '{label}')]")
+            if btns:
+                btns[0].click()
+                time.sleep(1.5)
+                return
+    except Exception:  # noqa: BLE001
+        pass
 
 
-def fetch_post(video_id: str) -> Dict[str, Any]:
-    if _key():
-        items = _api("videos", part="snippet,statistics", id=video_id).get("items") or []
-        if not items:
-            raise RuntimeError("video not found (private or deleted)")
-        s, sn = items[0].get("statistics", {}), items[0].get("snippet", {})
-        return {
-            "likes": _num(s.get("likeCount")),
-            "comments": _num(s.get("commentCount")),
-            "views": _num(s.get("viewCount")),
-            "shares": None,
-            "author": sn.get("channelTitle"),
-            "title": (sn.get("title") or "")[:80] or None,
-        }
+def _scripts_text(soup: BeautifulSoup) -> str:
+    return "\n".join(s.string or "" for s in soup.find_all("script") if s.string and ("ytInitial" in s.string or "likeCount" in s.string))
 
-    r = requests.get("https://www.youtube.com/watch", params={"v": video_id}, headers=UA, timeout=25)
-    if r.status_code == 429:
-        raise RuntimeError("YouTube rate limit (429) - set YT_API_KEY to avoid this")
-    r.raise_for_status()
-    t = r.text
-    vd = re.search(r'"videoDetails":\{"videoId":"%s".*?"viewCount":"(\d+)"' % re.escape(video_id), t, re.S)
-    if not vd:
-        raise RuntimeError("video unavailable (private, deleted or consent page)")
-    likes = re.search(r'"likeCount":"(\d+)"', t)
-    title = re.search(r'"videoDetails":\{"videoId":"[^"]+","title":"((?:[^"\\]|\\.)*)"', t)
-    author = re.search(r'"author":"((?:[^"\\]|\\.)*)"', t)
-    dec = lambda g: json.loads(f'"{g.group(1)}"') if g else None  # noqa: E731
+
+def _player_response(soup: BeautifulSoup) -> Optional[dict]:
+    """The page embeds `var ytInitialPlayerResponse = {...};` in a <script>; parse that JSON."""
+    for s in soup.find_all("script"):
+        t = s.string or ""
+        i = t.find("ytInitialPlayerResponse")
+        if i < 0:
+            continue
+        j = t.find("{", i)
+        if j < 0:
+            continue
+        try:
+            obj, _ = json.JSONDecoder().raw_decode(t[j:])
+            if isinstance(obj, dict) and ("videoDetails" in obj or "playabilityStatus" in obj):
+                return obj
+        except ValueError:
+            continue
+    return None
+
+
+def _ready(soup: BeautifulSoup) -> bool:
+    head = soup.get_text(" ", strip=True)[:4000].lower()
+    return _player_response(soup) is not None or "not a bot" in head or "video unavailable" in head
+
+
+def fetch_post(video_id: str, post: Optional[dict] = None) -> Dict[str, Any]:
+    driver = browser.get_driver()
+    driver.get(f"https://www.youtube.com/watch?v={video_id}")
+    _handle_consent(driver)
+    soup = browser.wait_for(driver, _ready, timeout=18)
+
+    text_head = soup.get_text(" ", strip=True)[:6000]
+    if "not a bot" in text_head.lower() or "unusual traffic" in text_head.lower():
+        raise RuntimeError("YouTube asked to verify the visitor is not a bot (this machine's IP is being challenged)")
+
+    pr = _player_response(soup) or {}
+    details = pr.get("videoDetails") or {}
+    if details.get("videoId") != video_id or "viewCount" not in details:
+        status = (pr.get("playabilityStatus") or {}).get("reason") or "private, deleted, age-restricted or blocked page"
+        raise RuntimeError(f"video unavailable ({status})")
+    views = _num(details.get("viewCount"))
+    title = details.get("title")
+    author = details.get("author")
+
+    # likes: the like button's accessibility text / data blob
+    blob = _scripts_text(soup)
+    likes = None
+    m = re.search(r'"likeCount"\s*:\s*"?(\d+)"?', blob)
+    if m:
+        likes = int(m.group(1))
+    else:
+        m = re.search(r"like this video along with ([\d,]+) other people", blob)
+        if m:
+            likes = _num(m.group(1))
+    if likes is None:
+        btn = soup.select_one("like-button-view-model button, #segmented-like-button button")
+        if btn and btn.get("aria-label"):
+            likes = _num(btn["aria-label"])
+
+    # comments: the section only renders after scrolling down in steps
+    comments = None
+    cre = re.compile(r"([\d][\d.,]*\s*[KMB]?)\s+Comments", re.I)
+    def _header_count(soup: BeautifulSoup) -> Optional[str]:
+        hdr = soup.find("ytd-comments-header-renderer")
+        m = cre.search(hdr.get_text(" ", strip=True)) if hdr else None
+        return m.group(1) if m else None
+
+    try:
+        time.sleep(2.5)  # let the player and page settle; comments only start loading afterwards
+        for attempt in range(3):
+            driver.execute_script(
+                "var c = document.querySelector('ytd-comments'); "
+                "if (c) { c.scrollIntoView({block: 'start'}); } else { window.scrollBy(0, 900); }"
+            )
+            soup3 = browser.wait_for(driver, lambda sp: _header_count(sp) is not None, timeout=7, poll=0.8)
+            found = _header_count(soup3)
+            if found:
+                comments = _num(found)
+                break
+            driver.execute_script("window.scrollBy(0, -300); window.scrollBy(0, 500);")  # nudge to trigger the lazy loader
+    except Exception:  # noqa: BLE001
+        pass
+
     return {
-        "likes": _num(likes.group(1)) if likes else None,
-        "comments": None,
-        "views": int(vd.group(1)),
+        "likes": likes,
+        "comments": comments,
+        "views": views,
         "shares": None,
-        "author": dec(author),
-        "title": (dec(title) or "")[:80] or None,
+        "author": author,
+        "title": (title or "")[:80] or None,
     }
 
 
 def fetch_profile(handle: str) -> Dict[str, Any]:
-    handle = handle.lstrip("@")
-    if _key():
-        items = _api("channels", part="statistics", forHandle="@" + handle).get("items") or []
-        if not items:
-            raise RuntimeError("channel not found")
-        s = items[0]["statistics"]
-        return {"followers": _num(s.get("subscriberCount")), "following": None, "posts_count": _num(s.get("videoCount"))}
-
-    r = requests.get(f"https://www.youtube.com/@{handle}", headers=UA, timeout=25)
-    if r.status_code == 404:
+    driver = browser.get_driver()
+    driver.get(f"https://www.youtube.com/@{handle.lstrip('@')}")
+    _handle_consent(driver)
+    soup = browser.wait_for(driver, lambda s: bool(re.search(r"[\d.,]+\s*[KMB]?\s+subscribers", s.get_text(" "))), timeout=15)
+    text = soup.get_text(" ", strip=True)
+    if "This page isn't available" in text or "404" in (soup.title.string if soup.title and soup.title.string else ""):
         raise RuntimeError("channel not found")
-    r.raise_for_status()
-    m = re.search(r'([\d.,]+[KMB]?) subscribers', r.text)
+    m = re.search(r"([\d.,]+\s*[KMB]?)\s+subscribers", text)
     if not m:
         raise RuntimeError("subscriber count not found (hidden or page changed)")
-    return {"followers": _short_count(m.group(1)), "following": None, "posts_count": None}
+    videos = re.search(r"([\d.,]+\s*[KMB]?)\s+videos", text)
+    return {"followers": _num(m.group(1)), "following": None, "posts_count": _num(videos.group(1)) if videos else None}

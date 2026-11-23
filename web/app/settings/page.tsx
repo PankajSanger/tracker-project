@@ -8,9 +8,9 @@ import { Icon, PlatformMark, Skeleton, useToast } from "@/components/ui";
 import { useSession } from "@/components/Shell";
 
 const ROWS: { pf: Platform; key: keyof Settings; runner: string }[] = [
-  { pf: "instagram", key: "interval_instagram", runner: "Runs from your PC (checks every hour; only posts that are due are fetched)" },
-  { pf: "youtube", key: "interval_youtube", runner: "Runs on GitHub every 30 minutes" },
-  { pf: "twitter", key: "interval_twitter", runner: "Runs on GitHub every 30 minutes" },
+  { pf: "instagram", key: "interval_instagram", runner: "Official Instagram Graph API, checked on GitHub every 30 minutes" },
+  { pf: "youtube", key: "interval_youtube", runner: "Selenium + Beautiful Soup, checked on GitHub every 30 minutes" },
+  { pf: "twitter", key: "interval_twitter", runner: "Selenium + Beautiful Soup, checked on GitHub every 30 minutes" },
 ];
 
 export default function SettingsPage() {
@@ -54,9 +54,6 @@ export default function SettingsPage() {
                 <div className="grow">
                   <div className="t">{PLATFORM_LABEL[pf]}</div>
                   <div className="muted small">{runner}</div>
-                  {pf === "instagram" && draft.interval_instagram < 180 && (
-                    <div className="small" style={{ color: "var(--warn)", marginTop: 4 }}><Icon name="alert" size={12} /> Instagram limits accounts that fetch too often. 3 hours or more is safer.</div>
-                  )}
                 </div>
                 <select className="select" value={draft[key]} onChange={(e) => set(key, Number(e.target.value))}>
                   {(INTERVALS.includes(draft[key]) ? INTERVALS : [...INTERVALS, draft[key]].sort((a, b) => a - b)).map((m) => <option key={m} value={m}>{intervalLabel(m)}</option>)}
@@ -64,7 +61,7 @@ export default function SettingsPage() {
               </div>
             ))}
           </div>
-          <div className="muted small" style={{ marginTop: 12 }}>The fastest possible interval is how often the runners themselves run (30 minutes on GitHub, hourly on your PC).</div>
+          <div className="muted small" style={{ marginTop: 12 }}>The fastest possible interval is how often the runners themselves run (every 30 minutes on GitHub).</div>
         </div>
 
         <div className="card">
