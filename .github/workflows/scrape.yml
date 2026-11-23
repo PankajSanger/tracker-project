@@ -23,7 +23,7 @@ jobs:
         env:
           # Everything is scraped with Selenium + Beautiful Soup (headless Chrome is preinstalled on the runner). No API keys.
           PLATFORMS: instagram,twitter,youtube
-          SKIP_ACCOUNTS: twitter   # X blocks profile pages from server IPs; the PC task (run_scrape.bat) covers X follower counts
+          SKIP_ACCOUNTS: twitter,instagram   # X and Instagram login-wall profile pages for server IPs; the PC task (run_scrape.bat) covers their follower counts
           FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}   # manual runs ignore the intervals
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
