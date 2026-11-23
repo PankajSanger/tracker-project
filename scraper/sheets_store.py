@@ -10,8 +10,10 @@ Sheets API only allows ~60 write requests per minute.
 """
 import json
 import os
+import time
 from typing import Any, Dict, List, Optional
 
+import requests
 from google.auth.transport.requests import AuthorizedSession
 from google.oauth2 import service_account
 
@@ -64,7 +66,16 @@ class SheetsStore:
 
     # ---- low level -------------------------------------------------------
     def _req(self, method: str, url: str, **kw: Any) -> Dict[str, Any]:
-        r = self.http.request(method, url, timeout=60, **kw)
+        for attempt in range(3):
+            try:
+                r = self.http.request(method, url, timeout=60, **kw)
+                break
+            except requests.ConnectionError:
+                # the kept-alive connection goes stale while we wait minutes for Apify: reconnect and retry
+                if attempt == 2:
+                    raise
+                self.http.close()
+                time.sleep(2 * (attempt + 1))
         if r.status_code >= 400:
             raise RuntimeError(f"Sheets API {r.status_code}: {r.text[:300]}")
         return r.json() if r.text else {}

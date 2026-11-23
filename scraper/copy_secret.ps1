@@ -1,6 +1,6 @@
 # Copies one secret value to the clipboard WITHOUT printing it, so you can paste it into GitHub.
 #   powershell -File scraper\copy_secret.ps1 GOOGLE_SERVICE_ACCOUNT_JSON
-#   powershell -File scraper\copy_secret.ps1 IG_GRAPH_TOKEN      (also IG_USER_ID - any NAME=value line in scraper\.env)
+#   powershell -File scraper\copy_secret.ps1 APIFY_TOKEN      (any NAME=value line in scraper\.env)
 param([Parameter(Mandatory = $true)][string]$Name)
 
 $root = Split-Path -Parent $PSScriptRoot

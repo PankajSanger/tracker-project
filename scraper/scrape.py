@@ -9,9 +9,7 @@ Run by GitHub Actions on a cron; also runnable locally:
 import json
 import logging
 import os
-import random
 import sys
-import time
 from datetime import datetime, timedelta, timezone
 
 _envf = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
@@ -28,10 +26,10 @@ for _s in (sys.stdout, sys.stderr):  # emoji in captions must not crash Windows 
         pass
 
 import alerts  # noqa: E402
-import browser  # noqa: E402
 import instagram  # noqa: E402
 import twitter  # noqa: E402
 import youtube  # noqa: E402
+from apify_api import ApifyError  # noqa: E402
 from sheets_store import SheetsStore, num, truthy  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -43,30 +41,12 @@ spike_pct, spike_min = SPIKE_PCT, SPIKE_MIN            # overridden by the dashb
 DEFAULT_INTERVAL = {"instagram": 180, "twitter": 60, "youtube": 60}  # minutes; changeable in the dashboard
 FORCE = os.getenv("FORCE") == "1"                      # manual runs ignore the interval
 HIST_HOURS = 60                                        # recent points kept per post for 24h deltas
-MAX_RETRIES = 2
-MAX_IG_PER_RUN = int(os.getenv("MAX_IG_PER_RUN", "8"))  # Instagram posts fetched per run (it throttles bursts)
 MODULES = {"instagram": instagram, "twitter": twitter, "youtube": youtube}
 METRICS = ("likes", "comments", "views", "shares")
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-
-def with_retries(fn, *args):
-    for attempt in range(MAX_RETRIES + 1):
-        try:
-            return fn(*args)
-        except (instagram.AuthError, instagram.RateLimited):
-            raise
-        except Exception as exc:  # noqa: BLE001
-            if exc.__class__.__module__.startswith("selenium"):
-                browser.close()  # a crashed/hung Chrome is restarted on the next attempt
-            permanent = any(k in str(exc).lower() for k in ("unavailable", "not found", "doesn't exist", "suspended", "not readable"))
-            if attempt == MAX_RETRIES or permanent:
-                raise
-            log.warning("retry %s after error: %s", attempt + 1, exc)
-            time.sleep(5 * (attempt + 1))
 
 
 def interval_minutes(item: dict, settings: dict) -> int:
@@ -103,13 +83,11 @@ def spike_alerts(post: dict, prev: dict, cur: dict) -> list:
 def main() -> int:
     store = SheetsStore()
     store.ensure_tabs()
-    # PLATFORMS lets two machines split the work (e.g. GitHub: youtube,twitter; your PC: instagram).
+    # PLATFORMS limits a run to some platforms (default: all three).
     allowed = {x.strip() for x in os.getenv("PLATFORMS", "instagram,twitter,youtube").split(",") if x.strip()}
     all_posts = [p for p in store.read("st_posts") if p.get("id") and truthy(p.get("active"))]
     posts = [p for p in all_posts if p["platform"] in allowed]
-    skip_acc = {x.strip() for x in os.getenv("SKIP_ACCOUNTS", "").split(",") if x.strip()}  # e.g. X profiles are login-walled on GitHub's IPs
-    soft_acc = {x.strip() for x in os.getenv("SOFT_ACCOUNTS", "").split(",") if x.strip()}  # try, but a failure is not an error (GitHub)
-    accounts = [a for a in store.read("st_accounts") if a.get("id") and truthy(a.get("active")) and a["platform"] in allowed and a["platform"] not in skip_acc]
+    accounts = [a for a in store.read("st_accounts") if a.get("id") and truthy(a.get("active")) and a["platform"] in allowed]
     prev_summary = {r["post_id"]: r for r in store.read("st_summary")}
     settings = {r["key"]: r["value"] for r in store.read("st_settings")}
     global spike_pct, spike_min
@@ -123,17 +101,13 @@ def main() -> int:
     log.info("platforms=%s: tracking %d posts, %d accounts", ",".join(sorted(allowed)), len(posts), len(accounts))
 
     failures = 0
-    ig_auth_failed = False
-    ig_blocked = False
     new_snaps, new_alerts, new_acc_snaps = [], [], []
     post_changes: dict = {}
     acc_changes: dict = {}
     fresh: dict = {}  # post_id -> new data this run
 
-    # stalest first, so a capped/throttled run always makes progress through the whole list
-    # "Check now" requests first, then the stalest posts
-    posts.sort(key=lambda p: (not settings.get(f"check_now:{p['id']}"), (prev_summary.get(p["id"]) or {}).get("last_taken_at") or ""))
-    ig_done = 0
+    # ---- pick the posts that are due ("Check now" requests always are) -------------
+    due: dict = {}  # platform -> [post]
     for post in posts:
         pid = post["id"]
         last = (prev_summary.get(pid) or {}).get("last_taken_at")
@@ -145,19 +119,28 @@ def main() -> int:
             skipped += 1
             continue
         if "unavailable" in (post.get("last_error") or "") and not FORCE and not wanted_now and datetime.now().hour % 12 != 0:
-            skipped += 1  # deleted/private post: re-checked only twice a day so it does not use up a run's budget
+            skipped += 1  # deleted/private post: re-checked only twice a day so it does not cost Apify credit every run
             continue
-        if post["platform"] == "instagram":
-            # Instagram throttles repeated page loads (~10 in a row from one address); do a few per run, the rest next run.
-            if ig_blocked or ig_auth_failed or ig_done >= MAX_IG_PER_RUN:
-                skipped += 1
-                continue
-            ig_done += 1
-        mod = MODULES.get(post["platform"])
-        if not mod:
-            continue
+        if post["platform"] in MODULES:
+            due.setdefault(post["platform"], []).append(post)
+
+    # ---- one Apify run per platform for all its due posts ---------------------------
+    for platform, plist in due.items():
+        ids = list(dict.fromkeys(p["external_id"] for p in plist))
         try:
-            data = with_retries(mod.fetch_post, post["external_id"], post)
+            results = MODULES[platform].fetch_posts(ids)
+        except ApifyError as exc:
+            log.error("Apify %s: %s", platform, exc)
+            alerts.notify(f"Tracker: Apify {platform}: {exc}")
+            results = {i: exc for i in ids}
+        for post in plist:
+            pid, data = post["id"], results.get(post["external_id"])
+            if isinstance(data, Exception) or data is None:
+                failures += 1
+                msg = f"Apify: {data}" if isinstance(data, ApifyError) else str(data)
+                log.error("FAIL %s %s: %s", platform, post["external_id"], msg)
+                post_changes[pid] = {"last_error": msg[:300]}
+                continue
             ts = now_iso()
             row = {k: data.get(k) for k in METRICS}
             row.update(post_id=pid, taken_at=ts)
@@ -170,67 +153,33 @@ def main() -> int:
                 ch["title"] = data["title"]
             post_changes[pid] = ch
             new_alerts += spike_alerts(post, prev_summary.get(pid, {}), data)
-            log.info("OK   %s %s %s", post["platform"], post["external_id"], {k: row[k] for k in METRICS})
-        except instagram.RateLimited as exc:
-            # not this post's fault and its old numbers are still valid: no error mark, just pause Instagram for this run
-            ig_blocked = True
-            log.warning("%s", exc)
-        except instagram.AuthError as exc:
-            failures += 1
-            ig_auth_failed = True
-            log.error("Instagram Graph API problem: %s", exc)
-            post_changes[pid] = {"last_error": str(exc)[:300]}
-            alerts.notify(f"Tracker: {exc}")
-        except Exception as exc:  # noqa: BLE001
-            failures += 1
-            log.error("FAIL %s %s: %s", post["platform"], post["external_id"], exc)
-            post_changes[pid] = {"last_error": str(exc)[:300]}
-        time.sleep(random.uniform(6, 10) if post["platform"] == "instagram" else random.uniform(0.5, 1.5))
+            log.info("OK   %s %s %s", platform, post["external_id"], {k: row[k] for k in METRICS})
 
-    # IG_GRID=late (GitHub): post pages first (they rarely get blocked), then *try* the reels grids for views.
-    # Instagram lets some server IPs through and not others; a block just means "no fresh views this run".
-    if os.getenv("IG_GRID") == "late" and not ig_blocked:
-        for post in posts:
-            pid, author = post["id"], (post.get("author") or post_changes.get(post["id"], {}).get("author") or "").lstrip("@")
-            if post["platform"] != "instagram" or pid not in fresh or not author:
-                continue
-            try:
-                item = instagram.grid_lookup(author, post["external_id"])
-            except instagram.RateLimited:
-                ig_blocked = True
-                log.info("Instagram reels grid not available from this IP this run (views keep their last value)")
-                break
-            except Exception as exc:  # noqa: BLE001
-                log.info("reels grid @%s: %s", author, exc)
-                continue
-            if item and item.get("views") is not None:
-                fresh[pid]["views"] = item["views"]
-                next(r for r in new_snaps if r["post_id"] == pid)["views"] = item["views"]
-                log.info("OK   views %s %s", post["external_id"], item["views"])
-            time.sleep(random.uniform(4, 7))
-
+    # ---- accounts (followers) ---------------------------------------------------------
+    due_acc: dict = {}
     for acc in accounts:
-        if not is_due(last_acc.get(acc["id"]), interval_minutes(acc, settings)):
+        if is_due(last_acc.get(acc["id"]), interval_minutes(acc, settings)):
+            due_acc.setdefault(acc["platform"], []).append(acc)
+        else:
             skipped += 1
-            continue
-        if acc["platform"] == "instagram" and (ig_auth_failed or ig_blocked):
-            continue
+    for platform, alist in due_acc.items():
+        handles = list(dict.fromkeys(a["handle"] for a in alist))
         try:
-            data = with_retries(MODULES[acc["platform"]].fetch_profile, acc["handle"])
+            results = MODULES[platform].fetch_profiles(handles)
+        except ApifyError as exc:
+            log.error("Apify %s accounts: %s", platform, exc)
+            results = {h: exc for h in handles}
+        for acc in alist:
+            data = results.get(acc["handle"])
+            if isinstance(data, Exception) or data is None:
+                failures += 1
+                msg = f"Apify: {data}" if isinstance(data, ApifyError) else str(data)
+                log.error("FAIL account @%s: %s", acc["handle"], msg)
+                acc_changes[acc["id"]] = {"last_error": msg[:300]}
+                continue
             new_acc_snaps.append({**data, "account_id": acc["id"], "taken_at": now_iso()})
             acc_changes[acc["id"]] = {"last_error": ""}
-            log.info("OK   account %s @%s %s", acc["platform"], acc["handle"], data)
-        except instagram.RateLimited:
-            ig_blocked = True  # login-walled from this IP right now: not the account's fault, try again next run
-            log.info("Instagram profile pages not available from this IP this run")
-        except Exception as exc:  # noqa: BLE001
-            if acc["platform"] in soft_acc:
-                log.info("account @%s not readable from this IP this run: %s", acc["handle"], str(exc)[:120])
-                continue  # flaky on server IPs: keep the last numbers, no error mark
-            failures += 1
-            log.error("FAIL account @%s: %s", acc["handle"], exc)
-            acc_changes[acc["id"]] = {"last_error": str(exc)[:300]}
-        time.sleep(random.uniform(1, 3))
+            log.info("OK   account %s @%s %s", platform, acc["handle"], data)
 
     # ---- summary: latest numbers + recent history (for 24h deltas) -------------
     cutoff = datetime.now(timezone.utc) - timedelta(hours=HIST_HOURS)
@@ -246,7 +195,7 @@ def main() -> int:
         except ValueError:
             hist = []
         hist = [h for h in hist if datetime.fromisoformat(h[0]) >= cutoff]
-        # Instagram only shows views for a creator's recent reels: keep the last known number (and when it was seen)
+        # no views this time (image post, or the actor left it out): keep the last known number (and when it was seen)
         views, views_at = f["views"], f["taken_at"] if f["views"] is not None else None
         if views is None and old and str(old.get("views", "")).strip() not in ("", "None"):
             views, views_at = num(old["views"]), old.get("views_at") or old.get("last_taken_at")
@@ -270,7 +219,6 @@ def main() -> int:
 
     log.info("Done. snapshots=%d account_snapshots=%d alerts=%d failures=%d not-due-yet=%d",
              len(new_snaps), len(new_acc_snaps), len(new_alerts), failures, skipped)
-    browser.close()
     return 0  # individual scrape errors are recorded in the sheet, not by failing the workflow
 
 

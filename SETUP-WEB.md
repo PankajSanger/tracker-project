@@ -1,15 +1,15 @@
 # Social Tracker - Instagram, X and YouTube (Google Sheets + Vercel, free)
 
 ```
-GitHub Actions (+ your PC)  --scrapes-->  Google Sheet (st_* tabs)  <--API routes--  Next.js site on Vercel
+GitHub Actions + Apify  --fetches-->     Google Sheet (st_* tabs)  <--API routes--  Next.js site on Vercel
    scraper/scrape.py                      your spreadsheet                            web/   (team logins)
 ```
 - **Data** lives in a Google Sheet you own. You can open it, filter it, chart it, export it.
 - **Website** (Vercel) reads/writes the sheet through server-side API routes using a service account. The key never reaches the browser.
 - **Collecting the numbers** (Python, `scraper/`):
-  - **Everything is scraped with Selenium (headless Chrome) + Beautiful Soup.** No official APIs, no API keys, no logins, no accounts at risk, all free.
-  - **PC** (Windows Task Scheduler runs `scraper\run_scrape.bat` every 5 minutes): everything, including Instagram views and follower counts.
-  - **GitHub Actions**, started every 15 minutes by cron-job.org (GitHub's own schedule only fires every few hours): runs when the PC is off. Covers YouTube, X and Instagram likes/comments, but not Instagram views or X/Instagram follower counts.
+  - **Numbers come from Apify actors** (apify.com scrapers, called over its API with `APIFY_TOKEN`). No browser, no Instagram login, no blocked server IPs.
+    One Apify run per platform covers all posts that are due. Apify bills per result (see "Costs" below).
+  - **GitHub Actions**, started every 15 minutes by cron-job.org (GitHub's own schedule only fires every few hours), does all the runs. Nothing needs to run on a PC.
 
 ## 1. The spreadsheet
 Use your existing `tracking` spreadsheet or a new one. The app only creates and touches its own tabs, named `st_posts`, `st_snapshots`,
@@ -24,20 +24,21 @@ Capacity: a Google Sheet holds 10 million cells. One snapshot = 6 cells, so 100 
 | | Post numbers | Account numbers |
 |---|---|---|
 | **YouTube** | views, likes, comments, title, channel | subscribers, video count |
-| **X** | likes, replies, reposts (views on newer posts) | followers, following, posts (rounded by X, e.g. 92.1M) |
-| **Instagram** | exact likes, comments, creator, caption; exact views for reels among the creator's recent reels | exact followers, following, posts |
+| **X** (needs a paid Apify plan) | likes, replies, reposts, views | followers, following, posts |
+| **Instagram** | exact likes, comments, creator, caption; exact views (plays) for every reel/video | exact followers, following, posts |
 
-Instagram shows **views** only in a creator's reels grid, and only for their recent reels: about 12 for a logged-out visitor, about 37 after logging in the scraper's own Chrome profile once (`cd scraper`, `..\venv\Scripts\python.exe ig_login.py`; use a secondary account). For older reels the dashboard keeps the last views it saw and marks them "last seen ..." (`*` in the table). Image posts have no views, and **shares** are never shown on the web.
-Offline tests of the parsers: `cd scraper`, `..\venv\Scripts\python.exe -m unittest test_instagram_parse test_scrape_logic`.
+Actors used: `apify/instagram-scraper`, `apify/instagram-profile-scraper`, `streamers/youtube-scraper`,
+`kaitoeasyapi/twitter-x-data-tweet-scraper-pay-per-result-cheapest`. Image posts have no views; Instagram **shares** are not available.
+On Apify's **free plan every X actor returns only demo tweets**, so X posts show "X needs a paid Apify plan" until the account is upgraded.
+Offline tests: `cd scraper`, `..\venv\Scripts\python.exe -m unittest test_apify_parse test_scrape_logic`.
 
 ## 3. GitHub (runs the scraper every 30 minutes - free)
 1. Push this folder to a GitHub repo (`.gitignore` keeps keys and `.env` files out).
 2. Settings -> Secrets and variables -> Actions -> **Secrets**:
-   - `SPREADSHEET_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON` (whole key file contents)
+   - `SPREADSHEET_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON` (whole key file contents), `APIFY_TOKEN` (apify.com -> Settings -> API & Integrations)
    - optional: `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` (phone alerts)
-3. Actions tab -> **selftest** -> Run workflow: tries a known YouTube, X and Instagram post/profile with Selenium from GitHub's servers (writes nothing) and prints OK/FAIL for each.
-4. Actions tab -> **scrape** -> Run workflow (tick "force" to fetch every post now, ignoring the intervals).
-5. **Reliable schedule (free):** GitHub's own cron fires only every few hours, so let cron-job.org start the workflow every 15 minutes:
+3. Actions tab -> **scrape** -> Run workflow (tick "force" to fetch every post now, ignoring the intervals).
+4. **Reliable schedule (free):** GitHub's own cron fires only every few hours, so let cron-job.org start the workflow every 15 minutes:
    - GitHub -> Settings -> Developer settings -> Fine-grained tokens -> Generate. Repository access: only `tracker-project`. Permissions: **Actions: Read and write**. Expiry: 1 year.
    - cron-job.org -> Create cronjob. URL `https://api.github.com/repos/PankajSanger/tracker-project/actions/workflows/scrape.yml/dispatches`, every 15 minutes.
      Advanced: method **POST**; headers `Authorization: Bearer <token>`, `Accept: application/vnd.github+json`; body `{"ref":"main"}`. "Test run" should return **204**.
@@ -65,8 +66,9 @@ Without `SPREADSHEET_ID` the site runs in **demo mode** on sample data (any logi
 - A teammate adds posts by pasting URLs; the first numbers appear after the next run (or run **scrape** from the Actions tab for instant data).
 
 ## Tracking intervals (dashboard -> Settings)
-Choose how often each platform is checked (15 minutes to 7 days) and override it per post on the post's page. The PC checks every 5 minutes for posts that are
-**due**, so a 15-minute interval really is ~15 minutes (while the PC is on). **Check now** (post page, table row, or bulk) refreshes a post on the next run, within ~5 minutes.
+Choose how often each platform is checked (15 minutes to 7 days) and override it per post on the post's page. Runs start every 15 minutes and fetch only posts that are
+**due**, so the shortest real interval is ~15 minutes. **Check now** (post page, table row, or bulk) refreshes a post on the next run, within ~15 minutes.
+Every check costs Apify credit, so longer intervals are cheaper.
 **Delete** is on the post page header, on every table row, and in the bulk bar (history stays in the sheet). Defaults: 1 hour for YouTube and X, 3 hours for Instagram. Alert thresholds (spike/drop %) are set there too.
 
 ## Features
@@ -78,15 +80,15 @@ Choose how often each platform is checked (15 minutes to 7 days) and override it
 
 ## Local run
 Website: `cd web`, copy `.env.local.example` to `.env.local` (fill in), `npm install`, `npm run dev` -> http://localhost:3000.
-Scraper: `cd scraper`, put `SPREADSHEET_ID` and `GOOGLE_SERVICE_ACCOUNT_FILE=..\key.json` in `scraper/.env`, then `..\venv\Scripts\python.exe scrape.py`.
-`..\venv\Scripts\python.exe selftest.py` checks the YouTube, X and Instagram scrapers. Set `SELENIUM_HEADLESS=0` to watch the browser.
+Scraper: `cd scraper`, put `SPREADSHEET_ID`, `GOOGLE_SERVICE_ACCOUNT_FILE=..\key.json` and `APIFY_TOKEN` in `scraper/.env`, then `..\venv\Scripts\python.exe scrape.py` (or `run_scrape.bat`).
+`..\venv\Scripts\python.exe apify_api.py --check` checks the token (free).
 (`archive/supabase/` holds an earlier version of the database; it is not used.)
 
 ## Know the limits
-- **Selenium is slower than an API:** about 5-15 seconds per YouTube video, 1-4 seconds per X post and ~4 seconds per Instagram post. Fine for GitHub, and the reason posts are fetched only when due.
-- **Instagram throttles bursts:** after roughly 10 page loads in a row from one address it redirects to its login page. So each run fetches at most 8 Instagram posts (stalest first, `MAX_IG_PER_RUN`), waits 6-10 s between them, and simply carries on next run; with 27 posts everything is refreshed within a few runs. Never-throttled numbers stay on the dashboard meanwhile.
-- **Profile pages are login-walled for server IPs** (X and Instagram), so GitHub skips them (`SKIP_ACCOUNTS`). To get follower counts for those, schedule `scraper\run_scrape.bat` on a PC (it only fetches what is due).
-- **Page layouts change:** if numbers stop appearing, run **selftest** (Actions tab) or `selftest.py` locally to see which scraper broke; the parsers are small and live in `scraper/youtube.py`, `twitter.py`, `instagram.py`.
-- **Terms of service:** scraping public pages is against some sites' terms; this tool only reads what a logged-out visitor can see, at a low request rate.
+- **Costs:** Apify's free plan includes a small monthly credit (about $5). Roughly: Instagram posts ~$1.5-2.7 per 1,000 checks, X ~$0.25-0.40 per 1,000,
+  YouTube similar to Instagram. Checks per month = posts x (43,200 / interval in minutes). Example: 10 Instagram posts every 30 min = 14,400 checks = ~$20-40/month;
+  every 3 hours = 2,400 checks = ~$4-7/month. `APIFY_MAX_USD_PER_RUN` (default $0.50) caps a single actor run. Check usage at console.apify.com -> Billing.
+- **Apify problems** (wrong token, credit used up, actor change) show up as "Apify: ..." in the post's error column and as a Telegram alert; old numbers stay.
+- **Actors change:** if numbers stop appearing, check the actor's page on apify.com; the field mapping is small and lives in `scraper/youtube.py`, `twitter.py`, `instagram.py`.
 - **Sheets quotas:** ~60 writes/min. The scraper batches everything into a few calls per run, so hundreds of posts are fine.
 - GitHub cron can drift by minutes, and a repo with no commits for 60 days gets its scheduled workflows paused.

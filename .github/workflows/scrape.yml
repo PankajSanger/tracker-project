@@ -14,7 +14,7 @@ concurrency: scrape
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -26,12 +26,9 @@ jobs:
       - run: python scrape.py
         working-directory: scraper
         env:
-          # Everything is scraped with Selenium + Beautiful Soup (headless Chrome is preinstalled on the runner). No API keys.
+          # Numbers come from Apify actors (one run per platform for the posts that are due). No browser on the runner.
           PLATFORMS: instagram,twitter,youtube
-          # Instagram/X profile pages (and reels grids = Instagram views) are login-walled for *some* server IPs.
-          # So GitHub fetches post pages first, then tries grids and profiles; a block only means "keep the last numbers this run".
-          IG_GRID: late
-          SOFT_ACCOUNTS: twitter,instagram
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
           FORCE: ${{ inputs.force && '1' || '' }}   # only when "force" is ticked on a manual run
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}

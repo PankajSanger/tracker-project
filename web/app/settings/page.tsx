@@ -8,9 +8,9 @@ import { Icon, PlatformMark, Skeleton, useToast } from "@/components/ui";
 import { useSession } from "@/components/Shell";
 
 const ROWS: { pf: Platform; key: keyof Settings; runner: string }[] = [
-  { pf: "instagram", key: "interval_instagram", runner: "Selenium + Beautiful Soup; views come from the creator's reels grid (recent reels)" },
-  { pf: "youtube", key: "interval_youtube", runner: "Selenium + Beautiful Soup" },
-  { pf: "twitter", key: "interval_twitter", runner: "Selenium + Beautiful Soup" },
+  { pf: "instagram", key: "interval_instagram", runner: "Apify instagram-scraper (likes, comments, reel views)" },
+  { pf: "youtube", key: "interval_youtube", runner: "Apify youtube-scraper" },
+  { pf: "twitter", key: "interval_twitter", runner: "Apify tweet scraper (needs a paid Apify plan)" },
 ];
 
 export default function SettingsPage() {
