@@ -138,7 +138,7 @@ function PostDetail() {
         <Kpi label="Views" icon="eye" color="var(--views)" value={fmt(post.views)} spark={post.spark_views} foot={viewsStale(post) ? <span title="Instagram only shows view counts on a creator's recent reels, so this is the last number seen">last seen {ago(post.views_at)}</span> : post.views === null && post.platform === "instagram" ? <span>not shown by Instagram</span> : <DeltaChip value={post.views_24h} suffix=" /24h" />} />
         <Kpi label="Likes" icon="heart" color="var(--likes)" value={fmt(post.likes)} spark={post.spark} foot={<DeltaChip value={post.likes_24h} suffix=" /24h" />} />
         <Kpi label="Comments" icon="message" color="var(--comments)" value={fmt(post.comments)} foot={<DeltaChip value={post.comments_24h} suffix=" /24h" />} />
-        <Kpi label="Engagement" icon="zap" color="#f59e0b" value={pct(engagement(post), 2)} foot={<span>checked {ago(post.last_taken_at)} · every {intervalLabel(effective)}</span>} />
+        <Kpi label="Engagement" icon="zap" color="var(--eng)" value={pct(engagement(post), 2)} foot={<span>checked {ago(post.last_taken_at)} · every {intervalLabel(effective)}</span>} />
       </div>
 
       <div className="card" style={{ marginBottom: 14 }}>

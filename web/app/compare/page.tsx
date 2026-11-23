@@ -10,7 +10,7 @@ import { Empty, Icon, PlatformMark, Seg, Skeleton } from "@/components/ui";
 import { AXIS, GRID, TipCard } from "@/components/charts";
 
 type Metric = "likes" | "comments" | "views";
-const PALETTE = ["#6366f1", "#f43f5e", "#10b981", "#f59e0b", "#06b6d4", "#a855f7"];
+const PALETTE = ["#1f5fd6", "#d6336c", "#0f9488", "#d98a06", "#7048e8", "#0891b2"];
 const RANGES: Record<string, number> = { "24h": 864e5, "7d": 7 * 864e5, "30d": 30 * 864e5, all: 0 };
 
 function Compare() {

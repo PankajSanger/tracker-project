@@ -24,6 +24,7 @@ const NAV: [string, string, string][] = [
   ["/alerts", "Alerts", "bell"],
   ["/settings", "Settings", "sliders"],
 ];
+const SECTIONS: [string, string[]][] = [["Analytics", ["/", "/posts", "/compare", "/accounts"]], ["Workspace", ["/alerts", "/settings"]]];
 
 export default function Shell({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -55,14 +56,19 @@ export default function Shell({ children }: { children: ReactNode }) {
     return (
       <div className="login-wrap">
         <div className="login-hero">
-          <div className="brand" style={{ padding: 0 }}><span className="logo"><Icon name="trend" size={19} /></span> Social Tracker</div>
-          <h1>Every post. Every platform. One live dashboard.</h1>
-          <p>Track likes, comments and views across Instagram, YouTube and X, spot spikes early and see what is really working for your team.</p>
+          <div className="brand" style={{ padding: 0 }}><span className="logo"><Icon name="trend" size={19} /></span><span>Social Tracker<small>Performance analytics</small></span></div>
+          <h1>Campaign performance across every platform, in one place.</h1>
+          <p>Live likes, comments, views and follower growth for Instagram, YouTube and X. Spot spikes early and report results with confidence.</p>
           <ul>
             <li><PlatformMark platform="instagram" size={26} /> Instagram posts and reels</li>
             <li><PlatformMark platform="youtube" size={26} /> YouTube videos and Shorts</li>
             <li><PlatformMark platform="twitter" size={26} /> X posts</li>
           </ul>
+          <div className="login-stats">
+            <div><b>3</b><span>platforms</span></div>
+            <div><b>15 min</b><span>refresh cycle</span></div>
+            <div><b>24/7</b><span>automated tracking</span></div>
+          </div>
         </div>
         <div className="login-form-side">
           <form
@@ -75,10 +81,10 @@ export default function Shell({ children }: { children: ReactNode }) {
               setBusy(false);
             }}
           >
-            <h2>Welcome back</h2>
-            <div className="muted">{demo ? "Demo mode: sample data. Any email and password works." : "Sign in with your team account."}</div>
-            <input className="input" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
-            <input className="input" type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <h2>Sign in</h2>
+            <div className="muted" style={{ marginTop: -6 }}>{demo ? "Demo mode: sample data. Any email and password works." : "Use your team account to continue."}</div>
+            <label>Email<input className="input" type="email" placeholder="name@company.com" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus autoComplete="username" /></label>
+            <label>Password<input className="input" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" /></label>
             {err && <div className="err small">{err}</div>}
             <button className="btn primary" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
           </form>
@@ -88,10 +94,17 @@ export default function Shell({ children }: { children: ReactNode }) {
 
   const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
   const initials = me.email.slice(0, 2).toUpperCase();
-  const links = NAV.map(([href, label, icon]) => (
+  const link = ([href, label, icon]: [string, string, string]) => (
     <Link key={href} href={href} className={`nav-link ${active(href) ? "active" : ""}`}>
-      <Icon name={icon} size={18} /> {label}
+      <Icon name={icon} size={17} /> {label}
     </Link>
+  );
+  const links = NAV.map(link);
+  const sectioned = SECTIONS.map(([title, hrefs]) => (
+    <div key={title}>
+      <div className="nav-section">{title}</div>
+      {NAV.filter(([h]) => hrefs.includes(h)).map(link)}
+    </div>
   ));
 
   return (
@@ -103,12 +116,12 @@ export default function Shell({ children }: { children: ReactNode }) {
       </div>
       <div className="shell">
         <aside className="sidebar">
-          <div className="brand"><span className="logo"><Icon name="trend" size={19} /></span> Social Tracker</div>
-          {links}
+          <div className="brand"><span className="logo"><Icon name="trend" size={19} /></span><span>Social Tracker<small>Performance analytics</small></span></div>
+          {sectioned}
           <div className="spacer" />
           <div className="user-card">
             {me.demo && <span className="chip warn" style={{ justifySelf: "start" }}>Demo data</span>}
-            <div className="who"><span className="avatar">{initials}</span><span className="email" title={me.email}>{me.email}</span></div>
+            <div className="who"><span className="avatar">{initials}</span><span style={{ minWidth: 0 }}><span className="email" title={me.email} style={{ display: "block" }}>{me.email}</span><span className="role">Team member</span></span></div>
             <div className="row-actions">
               <button className="btn sm" style={{ flex: 1 }} onClick={cycleTheme} title={themeTitle}><Icon name={themeIcon} size={14} /> {theme}</button>
               <button className="btn sm" title="Sign out" onClick={async () => { await api.logout(); setMe(null); }}><Icon name="logout" size={14} /></button>

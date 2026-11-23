@@ -61,7 +61,7 @@ export const INTERVALS = [15, 30, 60, 180, 360, 720, 1440];
 export const intervalLabel = (m: number) =>
   m < 60 ? `${m} min` : m % 1440 === 0 ? `${m / 1440} day${m / 1440 > 1 ? "s" : ""}` : `${m / 60} hour${m / 60 > 1 ? "s" : ""}`;
 
-export const PLATFORM_COLOR: Record<string, string> = { instagram: "#c026d3", youtube: "#ff0033", twitter: "#6b7190" };
+export const PLATFORM_COLOR: Record<string, string> = { instagram: "#d62976", youtube: "#ff0033", twitter: "#475569" };
 
 /** (likes + comments) / views, in percent. Null when views are unknown. */
 export const engagement = (p: { likes: number | null; comments: number | null; views: number | null }) =>

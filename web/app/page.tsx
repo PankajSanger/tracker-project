@@ -102,7 +102,7 @@ export default function OverviewPage() {
               foot={<><DeltaChip value={gain("likes")} /> <span>last {periodLabel}</span></>} />
             <Kpi label="Comments" icon="message" color="var(--comments)" value={fmt(totals.comments)} spark={spark("comments")}
               foot={<><DeltaChip value={gain("comments")} /> <span>last {periodLabel}</span></>} />
-            <Kpi label="Engagement" icon="zap" color="#f59e0b" value={pct(totals.eng, 2)} foot={<span>likes + comments per view</span>} />
+            <Kpi label="Engagement" icon="zap" color="var(--eng)" value={pct(totals.eng, 2)} foot={<span>likes + comments per view</span>} />
             <Kpi label="Tracked posts" icon="layers" color="var(--accent)" value={active.length}
               foot={needsAttention.length ? <span className="chip warn"><Icon name="alert" size={11} /> {needsAttention.length} need attention</span> : <span className="chip up"><Icon name="check" size={11} /> all healthy</span>} />
           </div>

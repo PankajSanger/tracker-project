@@ -109,7 +109,7 @@ export function Seg<T extends string | number>({ value, onChange, options }: { v
 
 export function Kpi({ label, icon, color, value, foot, spark, sparkColor }: { label: string; icon: string; color: string; value: ReactNode; foot?: ReactNode; spark?: number[]; sparkColor?: string }) {
   return (
-    <div className="card kpi">
+    <div className="card kpi" style={{ ["--kpi-color" as string]: color }}>
       <div className="label">
         <span className="ico" style={{ background: `color-mix(in srgb, ${color} 14%, transparent)`, color }}><Icon name={icon} size={15} /></span>
         {label}
