@@ -8,8 +8,8 @@ GitHub Actions (+ your PC)  --scrapes-->  Google Sheet (st_* tabs)  <--API route
 - **Website** (Vercel) reads/writes the sheet through server-side API routes using a service account. The key never reaches the browser.
 - **Collecting the numbers** (Python, `scraper/`):
   - **Everything is scraped with Selenium (headless Chrome) + Beautiful Soup.** No official APIs, no API keys, no logins, no accounts at risk, all free.
-  - **Main scheduler: a PC** (Windows Task Scheduler runs `scraper
-un_scrape.bat` every 30 minutes; GitHub's free schedule only fires every few hours in practice). **Backup: GitHub Actions** (posts only, every 30 minutes when it fires).
+  - **PC** (Windows Task Scheduler runs `scraper\run_scrape.bat` every 5 minutes): everything, including Instagram views and follower counts.
+  - **GitHub Actions**, started every 15 minutes by cron-job.org (GitHub's own schedule only fires every few hours): runs when the PC is off. Covers YouTube, X and Instagram likes/comments, but not Instagram views or X/Instagram follower counts.
 
 ## 1. The spreadsheet
 Use your existing `tracking` spreadsheet or a new one. The app only creates and touches its own tabs, named `st_posts`, `st_snapshots`,
@@ -36,7 +36,12 @@ Offline tests of the parsers: `cd scraper`, `..\venv\Scripts\python.exe -m unitt
    - `SPREADSHEET_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON` (whole key file contents)
    - optional: `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` (phone alerts)
 3. Actions tab -> **selftest** -> Run workflow: tries a known YouTube, X and Instagram post/profile with Selenium from GitHub's servers (writes nothing) and prints OK/FAIL for each.
-4. Actions tab -> **scrape** -> Run workflow (manual runs ignore the intervals). It then runs every 30 minutes by itself.
+4. Actions tab -> **scrape** -> Run workflow (tick "force" to fetch every post now, ignoring the intervals).
+5. **Reliable schedule (free):** GitHub's own cron fires only every few hours, so let cron-job.org start the workflow every 15 minutes:
+   - GitHub -> Settings -> Developer settings -> Fine-grained tokens -> Generate. Repository access: only `tracker-project`. Permissions: **Actions: Read and write**. Expiry: 1 year.
+   - cron-job.org -> Create cronjob. URL `https://api.github.com/repos/PankajSanger/tracker-project/actions/workflows/scrape.yml/dispatches`, every 15 minutes.
+     Advanced: method **POST**; headers `Authorization: Bearer <token>`, `Accept: application/vnd.github+json`; body `{"ref":"main"}`. "Test run" should return **204**.
+   - These runs respect the intervals, so only posts that are due get fetched.
 
 ## 4. Vercel (the website - free "Hobby" plan)
 1. vercel.com -> Add New -> Project -> import the GitHub repo. Set **Root Directory = `web`** (Next.js is detected).
@@ -80,8 +85,7 @@ Scraper: `cd scraper`, put `SPREADSHEET_ID` and `GOOGLE_SERVICE_ACCOUNT_FILE=..\
 ## Know the limits
 - **Selenium is slower than an API:** about 5-15 seconds per YouTube video, 1-4 seconds per X post and ~4 seconds per Instagram post. Fine for GitHub, and the reason posts are fetched only when due.
 - **Instagram throttles bursts:** after roughly 10 page loads in a row from one address it redirects to its login page. So each run fetches at most 8 Instagram posts (stalest first, `MAX_IG_PER_RUN`), waits 6-10 s between them, and simply carries on next run; with 27 posts everything is refreshed within a few runs. Never-throttled numbers stay on the dashboard meanwhile.
-- **Profile pages are login-walled for server IPs** (X and Instagram), so GitHub skips them (`SKIP_ACCOUNTS`). To get follower counts for those, schedule `scraper
-un_scrape.bat` on a PC (it only fetches what is due).
+- **Profile pages are login-walled for server IPs** (X and Instagram), so GitHub skips them (`SKIP_ACCOUNTS`). To get follower counts for those, schedule `scraper\run_scrape.bat` on a PC (it only fetches what is due).
 - **Page layouts change:** if numbers stop appearing, run **selftest** (Actions tab) or `selftest.py` locally to see which scraper broke; the parsers are small and live in `scraper/youtube.py`, `twitter.py`, `instagram.py`.
 - **Terms of service:** scraping public pages is against some sites' terms; this tool only reads what a logged-out visitor can see, at a low request rate.
 - **Sheets quotas:** ~60 writes/min. The scraper batches everything into a few calls per run, so hundreds of posts are fine.

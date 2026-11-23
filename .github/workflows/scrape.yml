@@ -2,7 +2,12 @@ name: scrape
 on:
   schedule:
     - cron: "7,37 * * * *"   # every 30 min (GitHub may delay runs by several minutes). Each post is only fetched when it is due - see Settings in the dashboard.
-  workflow_dispatch: {}
+  workflow_dispatch:   # also started every 15 min by cron-job.org (GitHub's own schedule is unreliable); those runs respect the intervals
+    inputs:
+      force:
+        description: "Fetch every post now, ignoring the intervals"
+        type: boolean
+        default: false
 
 concurrency: scrape
 
@@ -25,7 +30,7 @@ jobs:
           PLATFORMS: instagram,twitter,youtube
           IG_GRID: "0"   # reels grids (Instagram views) are profile pages, login-walled for server IPs; the PC collects views
           SKIP_ACCOUNTS: twitter,instagram   # X and Instagram login-wall profile pages for server IPs; the PC task (run_scrape.bat) covers their follower counts
-          FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}   # manual runs ignore the intervals
+          FORCE: ${{ inputs.force && '1' || '' }}   # only when "force" is ticked on a manual run
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
