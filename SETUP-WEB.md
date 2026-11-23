@@ -27,7 +27,7 @@ Capacity: a Google Sheet holds 10 million cells. One snapshot = 6 cells, so 100 
 | **Instagram** | exact likes, comments, creator, caption | exact followers, following, posts |
 
 Instagram **views and shares** are not public: Instagram only shows them to logged-in sessions, so those columns stay empty ("-"). Everything above works without logging in to anything.
-Offline tests of the parsers: `cd scraper`, `..env\Scripts\python.exe -m unittest test_instagram_parse test_scrape_logic`.
+Offline tests of the parsers: `cd scraper`, `..\venv\Scripts\python.exe -m unittest test_instagram_parse test_scrape_logic`.
 
 ## 3. GitHub (runs the scraper every 30 minutes - free)
 1. Push this folder to a GitHub repo (`.gitignore` keeps keys and `.env` files out).
