@@ -216,7 +216,8 @@ def grid_lookup(author: str, code: str) -> Optional[Dict[str, Any]]:
 
 def fetch_post(shortcode: str, post: Optional[dict] = None) -> Dict[str, Any]:
     author = ((post or {}).get("author") or "").strip().lstrip("@")
-    use_grid = os.getenv("IG_GRID", "1") != "0"  # profile pages are login-walled for server IPs, so GitHub sets IG_GRID=0
+    # "1" (PC): grid first. "0" or "late" (GitHub): post page only; with "late" scrape.py tries the grids after all posts.
+    use_grid = os.getenv("IG_GRID", "1") not in ("0", "late")
     if author and use_grid:
         item = grid_lookup(author, shortcode)
         if item and item.get("views") is not None and item.get("likes") is not None:

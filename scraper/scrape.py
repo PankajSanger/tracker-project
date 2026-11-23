@@ -108,6 +108,7 @@ def main() -> int:
     all_posts = [p for p in store.read("st_posts") if p.get("id") and truthy(p.get("active"))]
     posts = [p for p in all_posts if p["platform"] in allowed]
     skip_acc = {x.strip() for x in os.getenv("SKIP_ACCOUNTS", "").split(",") if x.strip()}  # e.g. X profiles are login-walled on GitHub's IPs
+    soft_acc = {x.strip() for x in os.getenv("SOFT_ACCOUNTS", "").split(",") if x.strip()}  # try, but a failure is not an error (GitHub)
     accounts = [a for a in store.read("st_accounts") if a.get("id") and truthy(a.get("active")) and a["platform"] in allowed and a["platform"] not in skip_acc]
     prev_summary = {r["post_id"]: r for r in store.read("st_summary")}
     settings = {r["key"]: r["value"] for r in store.read("st_settings")}
@@ -186,6 +187,28 @@ def main() -> int:
             post_changes[pid] = {"last_error": str(exc)[:300]}
         time.sleep(random.uniform(6, 10) if post["platform"] == "instagram" else random.uniform(0.5, 1.5))
 
+    # IG_GRID=late (GitHub): post pages first (they rarely get blocked), then *try* the reels grids for views.
+    # Instagram lets some server IPs through and not others; a block just means "no fresh views this run".
+    if os.getenv("IG_GRID") == "late" and not ig_blocked:
+        for post in posts:
+            pid, author = post["id"], (post.get("author") or post_changes.get(post["id"], {}).get("author") or "").lstrip("@")
+            if post["platform"] != "instagram" or pid not in fresh or not author:
+                continue
+            try:
+                item = instagram.grid_lookup(author, post["external_id"])
+            except instagram.RateLimited:
+                ig_blocked = True
+                log.info("Instagram reels grid not available from this IP this run (views keep their last value)")
+                break
+            except Exception as exc:  # noqa: BLE001
+                log.info("reels grid @%s: %s", author, exc)
+                continue
+            if item and item.get("views") is not None:
+                fresh[pid]["views"] = item["views"]
+                next(r for r in new_snaps if r["post_id"] == pid)["views"] = item["views"]
+                log.info("OK   views %s %s", post["external_id"], item["views"])
+            time.sleep(random.uniform(4, 7))
+
     for acc in accounts:
         if not is_due(last_acc.get(acc["id"]), interval_minutes(acc, settings)):
             skipped += 1
@@ -197,7 +220,13 @@ def main() -> int:
             new_acc_snaps.append({**data, "account_id": acc["id"], "taken_at": now_iso()})
             acc_changes[acc["id"]] = {"last_error": ""}
             log.info("OK   account %s @%s %s", acc["platform"], acc["handle"], data)
+        except instagram.RateLimited:
+            ig_blocked = True  # login-walled from this IP right now: not the account's fault, try again next run
+            log.info("Instagram profile pages not available from this IP this run")
         except Exception as exc:  # noqa: BLE001
+            if acc["platform"] in soft_acc:
+                log.info("account @%s not readable from this IP this run: %s", acc["handle"], str(exc)[:120])
+                continue  # flaky on server IPs: keep the last numbers, no error mark
             failures += 1
             log.error("FAIL account @%s: %s", acc["handle"], exc)
             acc_changes[acc["id"]] = {"last_error": str(exc)[:300]}

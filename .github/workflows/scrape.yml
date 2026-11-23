@@ -28,8 +28,10 @@ jobs:
         env:
           # Everything is scraped with Selenium + Beautiful Soup (headless Chrome is preinstalled on the runner). No API keys.
           PLATFORMS: instagram,twitter,youtube
-          IG_GRID: "0"   # reels grids (Instagram views) are profile pages, login-walled for server IPs; the PC collects views
-          SKIP_ACCOUNTS: twitter,instagram   # X and Instagram login-wall profile pages for server IPs; the PC task (run_scrape.bat) covers their follower counts
+          # Instagram/X profile pages (and reels grids = Instagram views) are login-walled for *some* server IPs.
+          # So GitHub fetches post pages first, then tries grids and profiles; a block only means "keep the last numbers this run".
+          IG_GRID: late
+          SOFT_ACCOUNTS: twitter,instagram
           FORCE: ${{ inputs.force && '1' || '' }}   # only when "force" is ticked on a manual run
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
