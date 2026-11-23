@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { usePosts } from "@/lib/hooks";
 import type { Platform, PostRow } from "@/lib/types";
-import { ago, delta, download, effectiveInterval, engagement, fmt, intervalLabel, isStale, pct, postTitle, toCsv, PLATFORM_LABEL } from "@/lib/utils";
+import { ago, delta, download, effectiveInterval, engagement, fmt, intervalLabel, isStale, pct, postTitle, toCsv, viewsStale, PLATFORM_LABEL } from "@/lib/utils";
 import { DeltaChip, Empty, Icon, PlatformMark, Seg, Skeleton, Sparkline, useToast } from "@/components/ui";
 
 type SortKey = "likes" | "views" | "comments" | "likes_24h" | "views_24h" | "eng" | "recent" | "added";
@@ -191,7 +191,7 @@ export default function PostsPage() {
                     <td style={{ fontWeight: 650 }}>{fmt(p.likes)}</td>
                     <td className={(p.likes_24h ?? 0) >= 0 ? "up" : "down"}>{delta(p.likes_24h)}</td>
                     <td>{fmt(p.comments)}</td>
-                    <td style={{ fontWeight: 650 }}>{fmt(p.views)}</td>
+                    <td style={{ fontWeight: 650 }} title={viewsStale(p) ? `last seen ${ago(p.views_at)}` : undefined}>{fmt(p.views)}{viewsStale(p) && <span className="faint small"> *</span>}</td>
                     <td className={(p.views_24h ?? 0) >= 0 ? "up" : "down"}>{delta(p.views_24h)}</td>
                     <td className="muted">{pct(engagement(p), 1)}</td>
                     <td className="c"><Sparkline values={p.spark} color={(p.likes_24h ?? 0) >= 0 ? "var(--good)" : "var(--bad)"} width={86} height={28} /></td>

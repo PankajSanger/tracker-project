@@ -20,3 +20,4 @@ debug_scrape.py.bak
 web/out/
 out/
 .vercel/
+scraper/.chrome-profile/

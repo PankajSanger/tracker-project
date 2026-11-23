@@ -23,6 +23,7 @@ jobs:
         env:
           # Everything is scraped with Selenium + Beautiful Soup (headless Chrome is preinstalled on the runner). No API keys.
           PLATFORMS: instagram,twitter,youtube
+          IG_GRID: "0"   # reels grids (Instagram views) are profile pages, login-walled for server IPs; the PC collects views
           SKIP_ACCOUNTS: twitter,instagram   # X and Instagram login-wall profile pages for server IPs; the PC task (run_scrape.bat) covers their follower counts
           FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}   # manual runs ignore the intervals
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}

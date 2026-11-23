@@ -69,6 +69,10 @@ export const engagement = (p: { likes: number | null; comments: number | null; v
 
 export const pct = (n: number | null | undefined, digits = 1) => (n === null || n === undefined ? "-" : `${n.toFixed(digits)}%`);
 
+/** True when the views shown are a carried-forward value from an earlier check. */
+export const viewsStale = (p: Pick<PostRow, "views_at" | "last_taken_at" | "views">) =>
+  p.views !== null && !!p.views_at && !!p.last_taken_at && new Date(p.last_taken_at).getTime() - new Date(p.views_at).getTime() > 2 * 3600 * 1000;
+
 export const postTitle = (p: Pick<PostRow, "title" | "author" | "external_id">) => p.title || p.author || p.external_id;
 
 export function dayLabel(iso: string): string {

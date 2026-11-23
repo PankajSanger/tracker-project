@@ -87,7 +87,7 @@ const sheetsStore: Store = {
         id: p.id, platform: p.platform as PostRow["platform"], url: p.url, external_id: p.external_id,
         title: nz(p.title), campaign: nz(p.campaign), author: nz(p.author), added_by: nz(p.added_by),
         active: truthy(p.active), last_error: nz(p.last_error), created_at: p.created_at,
-        last_taken_at: nz(s?.last_taken_at), ...latest, shares: n(s?.shares), ...delta24(hist, latest),
+        last_taken_at: nz(s?.last_taken_at), ...latest, shares: n(s?.shares), ...delta24(hist, latest), views_at: nz(s?.views_at) ?? (latest.views !== null ? nz(s?.last_taken_at) : null),
         interval_min: n(p.interval_min), spark: sparkOf(hist, 1), spark_views: sparkOf(hist, 3),
       };
     });
@@ -208,7 +208,7 @@ const demoStore: Store = {
       const l = s[s.length - 1];
       const hist = s.map((x) => [x.taken_at, x.likes, x.comments, x.views]);
       const latest = { likes: n(l?.likes), comments: n(l?.comments), views: n(l?.views) };
-      return { ...p, last_taken_at: l?.taken_at ?? null, ...latest, shares: null, ...delta24(hist, latest), spark: sparkOf(hist.slice(-80), 1), spark_views: sparkOf(hist.slice(-80), 3) } as PostRow;
+      return { ...p, last_taken_at: l?.taken_at ?? null, views_at: l?.views !== null ? l?.taken_at ?? null : null, ...latest, shares: null, ...delta24(hist, latest), spark: sparkOf(hist.slice(-80), 1), spark_views: sparkOf(hist.slice(-80), 3) } as PostRow;
     });
   },
   async addPosts(rows, by) {

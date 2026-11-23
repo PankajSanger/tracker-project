@@ -136,6 +136,9 @@ def main() -> int:
         if not is_due((prev_summary.get(pid) or {}).get("last_taken_at"), interval_minutes(post, settings)):
             skipped += 1
             continue
+        if "unavailable" in (post.get("last_error") or "") and not FORCE and datetime.now().hour % 12 != 0:
+            skipped += 1  # deleted/private post: re-checked only twice a day so it does not use up a run's budget
+            continue
         if post["platform"] == "instagram":
             # Instagram throttles repeated page loads (~10 in a row from one address); do a few per run, the rest next run.
             if ig_blocked or ig_auth_failed or ig_done >= MAX_IG_PER_RUN:
@@ -207,10 +210,14 @@ def main() -> int:
         except ValueError:
             hist = []
         hist = [h for h in hist if datetime.fromisoformat(h[0]) >= cutoff]
-        hist.append([f["taken_at"], f["likes"], f["comments"], f["views"]])
+        # Instagram only shows views for a creator's recent reels: keep the last known number (and when it was seen)
+        views, views_at = f["views"], f["taken_at"] if f["views"] is not None else None
+        if views is None and old and str(old.get("views", "")).strip() not in ("", "None"):
+            views, views_at = num(old["views"]), old.get("views_at") or old.get("last_taken_at")
+        hist.append([f["taken_at"], f["likes"], f["comments"], views])
         mine[pid] = {"post_id": pid, "last_taken_at": f["taken_at"], "likes": f["likes"],
-                     "comments": f["comments"], "views": f["views"], "shares": f["shares"],
-                     "hist": json.dumps(hist, separators=(",", ":"))}
+                     "comments": f["comments"], "views": views, "shares": f["shares"],
+                     "hist": json.dumps(hist, separators=(",", ":")), "views_at": views_at}
 
     # ---- flush: a handful of batched API calls ---------------------------------
     store.append("st_snapshots", new_snaps)

@@ -20,6 +20,7 @@ export interface PostRow {
   likes_24h: number | null;
   comments_24h: number | null;
   views_24h: number | null;
+  views_at: string | null;     // when the shown views were last actually seen (Instagram: only recent reels expose views)
   interval_min: number | null; // per-post tracking interval override (minutes); null = platform default
   spark: number[];             // recent likes values for the sparkline
   spark_views: number[];

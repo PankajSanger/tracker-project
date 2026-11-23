@@ -21,7 +21,7 @@ API = "https://sheets.googleapis.com/v4/spreadsheets"
 TABS: Dict[str, List[str]] = {
     "st_posts": ["id", "platform", "url", "external_id", "title", "author", "campaign", "added_by", "active", "last_error", "created_at", "interval_min"],
     "st_snapshots": ["post_id", "taken_at", "likes", "comments", "views", "shares"],
-    "st_summary": ["post_id", "last_taken_at", "likes", "comments", "views", "shares", "hist"],
+    "st_summary": ["post_id", "last_taken_at", "likes", "comments", "views", "shares", "hist", "views_at"],
     "st_accounts": ["id", "platform", "handle", "active", "last_error", "created_at"],
     "st_account_snapshots": ["account_id", "taken_at", "followers", "following", "posts_count"],
     "st_alerts": ["created_at", "post_id", "kind", "message"],

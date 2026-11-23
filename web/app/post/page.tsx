@@ -6,7 +6,7 @@ import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Too
 import { api } from "@/lib/api";
 import { DEFAULT_SETTINGS } from "@/lib/types";
 import type { PostRow, Settings, Snapshot } from "@/lib/types";
-import { ago, delta, download, engagement, fmt, INTERVALS, intervalLabel, pct, postTitle, toCsv, PLATFORM_LABEL } from "@/lib/utils";
+import { ago, delta, download, engagement, fmt, INTERVALS, intervalLabel, pct, postTitle, toCsv, viewsStale, PLATFORM_LABEL } from "@/lib/utils";
 import { DeltaChip, Empty, Icon, Kpi, PlatformMark, Seg, Skeleton, useToast } from "@/components/ui";
 import { AXIS, GRID, TipCard } from "@/components/charts";
 
@@ -129,7 +129,7 @@ function PostDetail() {
       {post.last_error && <div className="banner"><Icon name="alert" /> Last check failed: {post.last_error}</div>}
 
       <div className="grid kpis">
-        <Kpi label="Views" icon="eye" color="var(--views)" value={fmt(post.views)} spark={post.spark_views} foot={<DeltaChip value={post.views_24h} suffix=" /24h" />} />
+        <Kpi label="Views" icon="eye" color="var(--views)" value={fmt(post.views)} spark={post.spark_views} foot={viewsStale(post) ? <span title="Instagram only shows view counts on a creator's recent reels, so this is the last number seen">last seen {ago(post.views_at)}</span> : post.views === null && post.platform === "instagram" ? <span>not shown by Instagram</span> : <DeltaChip value={post.views_24h} suffix=" /24h" />} />
         <Kpi label="Likes" icon="heart" color="var(--likes)" value={fmt(post.likes)} spark={post.spark} foot={<DeltaChip value={post.likes_24h} suffix=" /24h" />} />
         <Kpi label="Comments" icon="message" color="var(--comments)" value={fmt(post.comments)} foot={<DeltaChip value={post.comments_24h} suffix=" /24h" />} />
         <Kpi label="Engagement" icon="zap" color="#f59e0b" value={pct(engagement(post), 2)} foot={<span>checked {ago(post.last_taken_at)} · every {intervalLabel(effective)}</span>} />

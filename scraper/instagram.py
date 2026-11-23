@@ -4,8 +4,13 @@ A logged-out visitor can load any public post or profile page, and the page's ow
   post:     exact likes and comments (from the embedded JSON), creator, caption   (cross-checked with the
             public `og:description` summary, e.g. "79K likes, 355 comments - user on August 1, 2026: ...")
   profile:  exact followers (embedded JSON), following and posts (`og:description`)
-Instagram only gives view counts and shares to logged-in sessions, so those stay empty (shown as "-").
+  views:    exact play counts of reels from the creator's reels grid (/{user}/reels/). Logged out, Instagram shows the
+            newest ~12 reels there; with an optional logged-in browser profile (ig_login.py) the grid is scrolled further
+            back and the exact counts are read from the page's own network responses.
+Shares are never shown on the web, so they stay empty.
 """
+import json
+import os
 import re
 import time
 from typing import Any, Dict, Optional
@@ -131,7 +136,104 @@ def _load(url: str, ready) -> BeautifulSoup:
     return soup
 
 
+# --------------------------------------------------------------------------- reels grid (views)
+GRID_SCROLLS = int(os.getenv("IG_GRID_SCROLLS", "25"))
+_grid: Dict[str, Dict[str, Any]] = {}
+
+
+def _collect_media(obj: Any, out: Dict[str, Dict[str, Any]]) -> None:
+    """Walk any JSON value and keep every media object that has a shortcode and counters."""
+    if isinstance(obj, dict):
+        code = obj.get("code") or obj.get("shortcode")
+        if isinstance(code, str) and any(k in obj for k in ("play_count", "ig_play_count", "like_count", "video_view_count")):
+            views = next((obj[k] for k in ("play_count", "ig_play_count", "video_play_count", "video_view_count") if isinstance(obj.get(k), int)), None)
+            prev = out.get(code, {})
+            out[code] = {
+                "views": views if views is not None else prev.get("views"),
+                "likes": obj.get("like_count") if isinstance(obj.get("like_count"), int) else prev.get("likes"),
+                "comments": obj.get("comment_count") if isinstance(obj.get("comment_count"), int) else prev.get("comments"),
+            }
+        for v in obj.values():
+            _collect_media(v, out)
+    elif isinstance(obj, list):
+        for v in obj:
+            _collect_media(v, out)
+
+
+def _media_from_text(text: str, out: Dict[str, Dict[str, Any]]) -> None:
+    dec = json.JSONDecoder()
+    try:
+        _collect_media(json.loads(text), out)
+        return
+    except ValueError:
+        pass
+    for m in re.finditer(r'\{"require"|\{"data"', text):  # page <script> blobs
+        try:
+            obj, _ = dec.raw_decode(text[m.start():])
+            _collect_media(obj, out)
+        except ValueError:
+            continue
+
+
+def logged_in() -> bool:
+    try:
+        return any(c.get("name") == "sessionid" and c.get("value") for c in browser.get_driver().get_cookies())
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def grid_lookup(author: str, code: str) -> Optional[Dict[str, Any]]:
+    """Exact views/likes/comments of one reel from its creator's reels grid (cached per creator for the run)."""
+    author = author.lstrip("@").lower()
+    entry = _grid.get(author)
+    if entry is None or (code not in entry["items"] and not entry["exhausted"]):
+        driver = browser.get_driver()
+        browser.network_json_bodies(driver)  # drop older network log entries
+        soup = _load(f"https://www.instagram.com/{author}/reels/", lambda s: bool(s.find("a", href=re.compile(r"/reel/"))) or "isn't available" in s.get_text(" ")[:2500] or "isn’t available" in s.get_text(" ")[:2500])
+        items: Dict[str, Dict[str, Any]] = dict(entry["items"]) if entry else {}
+        for sc in soup.find_all("script"):
+            if sc.string and ("play_count" in sc.string or "like_count" in sc.string):
+                _media_from_text(sc.string, items)
+        exhausted = True
+        if code not in items and logged_in():
+            stale, last_tiles = 0, -1
+            for _ in range(GRID_SCROLLS):
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(2.2)
+                for body in browser.network_json_bodies(driver):
+                    _media_from_text(body, items)
+                if code in items:
+                    exhausted = False
+                    break
+                tiles = len(browser.soup_of(driver).find_all("a", href=re.compile(r"/reel/")))
+                stale = stale + 1 if tiles == last_tiles else 0
+                last_tiles = tiles
+                if stale >= 3:  # reached the end of the grid
+                    break
+        entry = _grid[author] = {"items": items, "exhausted": exhausted}
+    return entry["items"].get(code)
+
+
 def fetch_post(shortcode: str, post: Optional[dict] = None) -> Dict[str, Any]:
+    author = ((post or {}).get("author") or "").strip().lstrip("@")
+    use_grid = os.getenv("IG_GRID", "1") != "0"  # profile pages are login-walled for server IPs, so GitHub sets IG_GRID=0
+    if author and use_grid:
+        item = grid_lookup(author, shortcode)
+        if item and item.get("views") is not None and item.get("likes") is not None:
+            return {"likes": item["likes"], "comments": item["comments"], "views": item["views"], "shares": None, "author": author, "title": None}
+    data = _fetch_post_page(shortcode)
+    if not author and data.get("author") and use_grid:
+        item = grid_lookup(data["author"], shortcode)
+        if item and item.get("views") is not None:
+            data["views"] = item["views"]
+    elif author:
+        item = (_grid.get(author.lower()) or {}).get("items", {}).get(shortcode)
+        if item and item.get("views") is not None:
+            data["views"] = item["views"]
+    return data
+
+
+def _fetch_post_page(shortcode: str) -> Dict[str, Any]:
     def ready(s: BeautifulSoup) -> bool:
         return bool(_script_numbers(s, "like_count")) or "isn't available" in s.get_text(" ")[:2500] or "isn’t available" in s.get_text(" ")[:2500]
 
