@@ -44,6 +44,7 @@ DEFAULT_INTERVAL = {"instagram": 180, "twitter": 60, "youtube": 60}  # minutes; 
 FORCE = os.getenv("FORCE") == "1"                      # manual runs ignore the interval
 HIST_HOURS = 60                                        # recent points kept per post for 24h deltas
 MAX_RETRIES = 2
+MAX_IG_PER_RUN = int(os.getenv("MAX_IG_PER_RUN", "8"))  # Instagram posts fetched per run (it throttles bursts)
 MODULES = {"instagram": instagram, "twitter": twitter, "youtube": youtube}
 METRICS = ("likes", "comments", "views", "shares")
 
@@ -127,17 +128,20 @@ def main() -> int:
     acc_changes: dict = {}
     fresh: dict = {}  # post_id -> new data this run
 
+    # stalest first, so a capped/throttled run always makes progress through the whole list
+    posts.sort(key=lambda p: (prev_summary.get(p["id"]) or {}).get("last_taken_at") or "")
+    ig_done = 0
     for post in posts:
         pid = post["id"]
         if not is_due((prev_summary.get(pid) or {}).get("last_taken_at"), interval_minutes(post, settings)):
             skipped += 1
             continue
-        if post["platform"] == "instagram" and (ig_auth_failed or ig_blocked):
-            if ig_blocked:
-                post_changes[pid] = {"last_error": "Instagram is limiting this account - will retry next run"}
-            else:
-                post_changes[pid] = {"last_error": "Instagram Graph API token problem"}
-            continue
+        if post["platform"] == "instagram":
+            # Instagram throttles repeated page loads (~10 in a row from one address); do a few per run, the rest next run.
+            if ig_blocked or ig_auth_failed or ig_done >= MAX_IG_PER_RUN:
+                skipped += 1
+                continue
+            ig_done += 1
         mod = MODULES.get(post["platform"])
         if not mod:
             continue
@@ -157,11 +161,9 @@ def main() -> int:
             new_alerts += spike_alerts(post, prev_summary.get(pid, {}), data)
             log.info("OK   %s %s %s", post["platform"], post["external_id"], {k: row[k] for k in METRICS})
         except instagram.RateLimited as exc:
-            failures += 1
+            # not this post's fault and its old numbers are still valid: no error mark, just pause Instagram for this run
             ig_blocked = True
-            log.error("%s", exc)
-            post_changes[pid] = {"last_error": str(exc)[:300]}
-            alerts.notify(f"Tracker: {exc}")
+            log.warning("%s", exc)
         except instagram.AuthError as exc:
             failures += 1
             ig_auth_failed = True
@@ -172,7 +174,7 @@ def main() -> int:
             failures += 1
             log.error("FAIL %s %s: %s", post["platform"], post["external_id"], exc)
             post_changes[pid] = {"last_error": str(exc)[:300]}
-        time.sleep(random.uniform(3, 6) if post["platform"] == "instagram" else random.uniform(0.5, 1.5))
+        time.sleep(random.uniform(6, 10) if post["platform"] == "instagram" else random.uniform(0.5, 1.5))
 
     for acc in accounts:
         if not is_due(last_acc.get(acc["id"]), interval_minutes(acc, settings)):
